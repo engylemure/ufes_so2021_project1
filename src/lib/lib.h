@@ -35,7 +35,8 @@ typedef struct execArgs {
   int argc;
   char **argv;
   void (*drop)(struct execArgs *self);
-  CallResult *(*call)(struct execArgs* self, bool should_wait);
+  char* (*fmt)(struct execArgs *self);
+  CallResult *(*call)(struct execArgs* self, bool should_fork, bool should_wait);
 } ExecArgs;
 
 typedef struct callGroup {
@@ -62,6 +63,7 @@ typedef struct callArg {
 CallArg *prompt_user(ShellState *state);
 ShellState *initialize_shell_state();
 
-
 void todo(char *msg);
+void debug_lib(bool should_debug);
+
 #endif

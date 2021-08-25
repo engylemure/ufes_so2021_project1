@@ -36,7 +36,8 @@ ExecArgs *exec_args_from_call_list(LinkedList *list);
 void drop_exec_args(ExecArgs *self);
 char *fmt_exec_arg(void *data);
 LinkedList *new_list_exec_args();
-CallResult *basic_exec_args_call(ExecArgs *self, bool should_wait);
+CallResult *basic_exec_args_call(ExecArgs *exec_args, bool should_fork,
+                                 bool should_wait);
 
 /*
  * CallRes functions
@@ -112,6 +113,13 @@ bool is_ignorable_call(char *str) {
   return strlen(str) || str[0] == '(' || str[0] == ')';
 }
 
+bool DEBUG_IS_ON = false;
+void debug_lib(bool should_debug) {
+  if (should_debug) {
+    DEBUG_IS_ON = true;
+  }
+}
+
 ShellState *initialize_shell_state() {
   char *PWD = read_env("PWD");
   char *HOME = read_env("HOME");
@@ -185,6 +193,7 @@ void drop_call_arg(CallArg *self) {
 ExecArgs *exec_args_from_call_list(LinkedList *list) {
   ExecArgs *self = malloc(sizeof(ExecArgs));
   self->drop = *drop_exec_args;
+  self->fmt = (char *(*)(struct execArgs * self)) * fmt_exec_arg;
   self->call = *basic_exec_args_call;
   self->argc = list->count(list);
   ListNode *node;
@@ -236,7 +245,8 @@ LinkedList *new_list_exec_args() {
   return initialize_list(&fmt_exec_arg, (void (*)(void *))drop_exec_args);
 }
 
-CallResult *basic_exec_args_call(ExecArgs *exec_args, bool should_wait) {
+CallResult *basic_exec_args_call(ExecArgs *exec_args, bool should_fork,
+                                 bool should_wait) {
   enum CallStatus status = UnknownCommand;
   char *program_name = NULL;
   bool is_parent = true;
@@ -246,13 +256,13 @@ CallResult *basic_exec_args_call(ExecArgs *exec_args, bool should_wait) {
   } else {
     program_name = exec_args->argv[0];
     if (str_equals(program_name, "exit")) {
-      printf("Vaccine Shell was exited!\n");
+      printf("JoJo Shell was exited!\n");
       status = Exit;
     } else if (str_equals(program_name, "cd")) {
       todo("handle 'cd' call");
       status = Continue;
     } else {
-      child_pid = fork();
+      child_pid = should_fork ? fork() : 0;
       if (child_pid == -1) {
         perror("We can't start a new program since 'fork' failed!\n");
         exit(1);
@@ -267,6 +277,7 @@ CallResult *basic_exec_args_call(ExecArgs *exec_args, bool should_wait) {
           }
         }
       } else {
+        // printf("program_name:%s\n", program_name);
         execvp(program_name, exec_args->argv);
         is_parent = false;
       }
@@ -396,6 +407,7 @@ void call_group_specific_type(enum CallType expected_type, enum CallType *type,
     *type = expected_type;
     (*list_exec_args)->push(*list_exec_args, exec_arg);
   } else {
+    (*list_exec_args)->push(*list_exec_args, exec_arg);
     list_call_group->push(list_call_group, call_group_from_list_exec_args(
                                                *list_exec_args, *type));
     *list_exec_args = new_list_exec_args();
@@ -486,8 +498,7 @@ char *fmt_parse_arg_res(void *data) {
 }
 
 char *str_from_char_list(LinkedList *char_list, bool drop_list) {
-  char_list->print(char_list, stdout);
-  char *str = malloc(sizeof(char) * (char_list->count(char_list) + 2));
+  char *str = malloc(sizeof(char) * (char_list->count(char_list) + 1));
   void *char_data;
   int i;
   for (i = 0, char_data = char_list->deque(char_list); char_data != NULL;
@@ -515,6 +526,8 @@ LinkedList *process_call_arg(CallArg *call_arg) {
     has_error = true;
     i = str_len;
   }
+  void (*push_in_buffer)(LinkedList * list, char c) =
+      (void (*)(struct linkedList *, char))char_buffer->push;
   for (; i < str_len; i++) {
     c = call_arg->arg[i];
     switch (c) {
@@ -522,7 +535,7 @@ LinkedList *process_call_arg(CallArg *call_arg) {
       if (arg_parse_state == Ignore) {
         continue;
       } else if (arg_parse_state == LeftQuote) {
-        char_buffer->push(char_buffer, (void *)c);
+        push_in_buffer(char_buffer, c);
         buffer_size += 1;
       } else if (buffer_size) {
         args->push(args, new_parse_arg_res(
@@ -531,29 +544,25 @@ LinkedList *process_call_arg(CallArg *call_arg) {
         buffer_size = 0;
       };
       break;
-    case '|':
-      if (buffer_size) {
-        args->push(args, new_parse_arg_res(
-                             str_from_char_list(char_buffer, false), Bar));
-        arg_parse_state = Ignore;
-        buffer_size = 0;
-      };
-      break;
-    case '&':
-      if (buffer_size) {
-        enum ArgType type = At;
-        if (i + 1 < str_len && call_arg->arg[i + 1] == '&') {
-          type = DoubleAt;
-          i += 1;
-        }
-        args->push(args, new_parse_arg_res(
-                             str_from_char_list(char_buffer, false), type));
-        arg_parse_state = Ignore;
-        buffer_size = 0;
-      };
-      break;
+    case '|': {
+      args->push(
+          args, new_parse_arg_res(str_from_char_list(char_buffer, false), Bar));
+      arg_parse_state = Ignore;
+      buffer_size = 0;
+    } break;
+    case '&': {
+      enum ArgType type = At;
+      if (i + 1 < str_len && call_arg->arg[i + 1] == '&') {
+        type = DoubleAt;
+        i += 1;
+      }
+      args->push(args, new_parse_arg_res(str_from_char_list(char_buffer, false),
+                                         type));
+      arg_parse_state = Ignore;
+      buffer_size = 0;
+    } break;
     case '"':
-      char_buffer->push(char_buffer, (void *)c);
+      push_in_buffer(char_buffer, c);
       if (arg_parse_state == LeftQuote) {
         args->push(args, new_parse_arg_res(
                              str_from_char_list(char_buffer, false), Quoted));
@@ -568,7 +577,7 @@ LinkedList *process_call_arg(CallArg *call_arg) {
       if (arg_parse_state == Ignore) {
         arg_parse_state = Word;
       }
-      char_buffer->push(char_buffer, (void *)c);
+      push_in_buffer(char_buffer, c);
       buffer_size += 1;
       break;
     }
@@ -617,21 +626,24 @@ CallGroups *call_groups(CallArg *call_arg) {
         free(str);
         str = env_value;
       }
-      list_string->push(list_string, str);
       switch (parse_arg_res->type) {
       case Bar:
         call_group_specific_type(Piped, &type, &list_string, list_call_group,
                                  &list_exec_args);
+        free(str);
         break;
       case At:
         call_group_specific_type(Parallel, &type, &list_string, list_call_group,
                                  &list_exec_args);
+        free(str);
         break;
       case DoubleAt:
         call_group_specific_type(Sequential, &type, &list_string,
                                  list_call_group, &list_exec_args);
+        free(str);
         break;
       default:
+        list_string->push(list_string, str);
         break;
       }
       parse_arg_res->drop(parse_arg_res);
