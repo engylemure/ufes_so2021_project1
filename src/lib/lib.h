@@ -26,7 +26,7 @@ typedef struct shellState {
 enum CallStatus { Continue, Exit, Cd, UnknownCommand };
 
 typedef struct callResult {
-  char *program_name;
+  char *additional_data;
   enum CallStatus status;
   bool is_parent;
   pid_t child_pid;

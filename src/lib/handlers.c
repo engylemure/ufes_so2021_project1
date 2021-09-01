@@ -55,7 +55,7 @@ void sig_int_handler(const int signal) {
 void unknown_cmd_info(CallResult *res, bool *should_continue,
                       int *status_code) {
   if (res->is_parent) {
-    printf("Unknown command %s\n", res->program_name);
+    printf("Unknown command %s\n", res->additional_data);
   } else {
     *should_continue = false;
     *status_code = UnknownCommand;
@@ -72,7 +72,7 @@ pid_t basic_cmd_handler(ShellState *state, ExecArgs *exec_args, bool should_wait
     *should_continue = false;
     break;
   case Cd:
-    state->change_dir(state, res->program_name);
+    state->change_dir(state, res->additional_data);
     break;
   case UnknownCommand:
     unknown_cmd_info(res, should_continue, status_code);

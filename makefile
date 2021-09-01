@@ -17,6 +17,11 @@ BINARY_PATH = $(TARGET_PATH)/$(BINARY)
 ECHO = echo
 RM = rm -rf
 MKDIR = mkdir
+OPTIMISATION_ARG = -O0
+
+ifeq ($(ENV), "release")
+	OPTIMISATION_ARG = -O3
+endif
 
 ifeq ($(DEBUG), 1) 
 	DBG_FLAG = -g
@@ -27,15 +32,16 @@ initial_setup:
 
 build_start:
 	@$(ECHO) "Compiling $(BINARY)"
+
 all: build_start initial_setup $(BINARY)
 	@$(ECHO) "Compilation finished!"
 	
 $(BINARY): $(OBJECTS)
-	@$(COMPILER_CMD) -pthread $(OBJECTS) -o $(BINARY_PATH)
+	@$(COMPILER_CMD)   $(OPTIMISATION_ARG) -pthread $(OBJECTS) -o $(BINARY_PATH)
 
 $(BUILD_PATH)/%.o: %.c
 	@$(ECHO) Compiling $<
-	@$(COMPILER_CMD) -pthread -c $< -o $@ 
+	@$(COMPILER_CMD) -pthread $(OPTIMISATION_ARG) -c  $< -o $@ 
 
 build_cleanup:
 	@$(RM) -f $(BUILD_PATH)

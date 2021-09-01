@@ -1,5 +1,6 @@
 #include <dirent.h>
 #include <limits.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/wait.h>
@@ -38,11 +39,6 @@ char *read_env(char *name) {
 }
 
 Vec *new_vec_string() { return new_vec(sizeof(char *)); }
-
-// Temporary handling unwanted or unused characters
-bool is_ignorable_call(char *str) {
-  return strlen(str) || str[0] == '(' || str[0] == ')';
-}
 
 bool DEBUG_IS_ON = false;
 void debug_lib(bool should_debug) {
@@ -88,7 +84,7 @@ char *pretty_pwd(ShellState *self) {
 void shell_state_change_dir(ShellState *self, char *new_dir) {
   DIR *dir;
   dir = opendir(new_dir);
-  char *real_dir_path = malloc(sizeof(char)*(BUFFER_MAX_SIZE >> 1));
+  char *real_dir_path = malloc(sizeof(char) * (BUFFER_MAX_SIZE >> 1));
   if (dir != NULL && realpath(new_dir, real_dir_path)) {
     free(self->pwd);
     self->pwd = real_dir_path;
@@ -181,7 +177,7 @@ CallResult *basic_exec_args_call(ExecArgs *exec_args, bool should_fork,
     if (str_equals(program_name, "exit")) {
       printf("Vaccine Shell was exited!\n");
       status = Exit;
-    } else if (str_equals(program_name, "cd") && exec_args->argc == 2) {
+    } else if (str_equals(program_name, "cd")) {
       status = Cd;
     } else {
       child_pid = should_fork ? fork() : 0;
@@ -206,9 +202,14 @@ CallResult *basic_exec_args_call(ExecArgs *exec_args, bool should_fork,
   }
   char *aux_str;
   switch (status) {
-  case Cd:
-    aux_str = strdup(exec_args->argv[1]);
-    break;
+  case Cd: {
+    if (exec_args->argc == 1 || str_equals(exec_args->argv[1], "~")) {
+      char *home_env = getenv("HOME");
+      aux_str = home_env != NULL ? strdup(home_env) : NULL;
+    } else {
+      aux_str = strdup(exec_args->argv[1]);
+    }
+  } break;
   case UnknownCommand:
     aux_str = strdup(program_name);
     break;
@@ -219,20 +220,20 @@ CallResult *basic_exec_args_call(ExecArgs *exec_args, bool should_fork,
 }
 
 CallResult *new_call_result(enum CallStatus status, bool is_parent,
-                            char *program_name, pid_t child_pid) {
+                            char *additional_data, pid_t child_pid) {
   CallResult *res = malloc(sizeof(CallResult));
   res->drop = *drop_call_res;
   res->is_parent = is_parent;
   res->status = status;
-  res->program_name = program_name;
+  res->additional_data = additional_data;
   res->child_pid = child_pid;
   return res;
 }
 
 void drop_call_res(CallResult *self) {
-  if (self->program_name != NULL) {
-    free(self->program_name);
-    self->program_name = NULL;
+  if (self->additional_data != NULL) {
+    free(self->additional_data);
+    self->additional_data = NULL;
   }
   free(self);
 }
@@ -313,7 +314,8 @@ char *str_from_vec_char(Vec **vec, bool should_alloc) {
   char *str = malloc(sizeof(char) * ((*vec)->length + 1));
   int i;
   for (i = 0; i < (*vec)->length; i++) {
-    str[i] = (*vec)->get(*vec, i);
+    uintptr_t int_val = (uintptr_t)(*vec)->get(*vec, i);
+    str[i] = int_val;
   }
   str[i] = '\0';
   (*vec)->drop(*vec);
@@ -367,13 +369,17 @@ Vec *process_call_arg(CallArg *call_arg) {
       arg_parse_state = Ignore;
     } break;
     case '"':
-      push_in_buffer(char_buffer, c);
-      if (arg_parse_state == LeftQuote) {
-        args->push(args, new_parse_arg_res(
-                             str_from_vec_char(&char_buffer, true), Quoted));
-        arg_parse_state = Ignore;
+      if (char_buffer->length && (char)(uintptr_t)char_buffer->get(char_buffer, char_buffer->length-1) == '\\') {
+        char_buffer->pop(char_buffer);
+        push_in_buffer(char_buffer, c);
       } else {
-        arg_parse_state = LeftQuote;
+        if (arg_parse_state == LeftQuote) {
+        args->push(args, new_parse_arg_res(
+                              str_from_vec_char(&char_buffer, true), Quoted));
+          arg_parse_state = Ignore;
+        } else {
+          arg_parse_state = LeftQuote;
+        }
       }
       break;
     default:
@@ -397,7 +403,8 @@ Vec *process_call_arg(CallArg *call_arg) {
   } else {
     char_buffer->drop(char_buffer);
   }
-  args->print(args, fmt_parse_arg_res);
+  if (DEBUG_IS_ON)
+    args->print(args, fmt_parse_arg_res);
   if (has_error) {
     args->drop(args);
     return NULL;
@@ -481,7 +488,8 @@ CallGroups *call_groups(CallArg *call_arg) {
     }
     vec_call_group->push(vec_call_group,
                          call_group_from_vec_exec_args(vec_exec_args, type));
-    vec_call_group->print(vec_call_group, fmt_call_group);
+    if (DEBUG_IS_ON)
+      vec_call_group->print(vec_call_group, fmt_call_group);
     int call_group_count = vec_call_group->length;
     CallGroups *val = new_call_groups(call_group_count, false);
     CallGroup *call_group;
