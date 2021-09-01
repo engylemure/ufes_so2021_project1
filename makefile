@@ -5,7 +5,7 @@ TARGET_PATH = target
 BUILD_PATH = build
 # Source files directories
 SRC_PATH = src
-COMPILER_CMD = $(COMPILER) $(DBG_FLAG)
+COMPILER_CMD = $(COMPILER) $(DBG_FLAG) $(OPTIMISATION_ARG)
 
 SOURCES := $(shell find $(SRC_PATH) -name '*.c')
 SOURCES_PATH := $(sort $(dir $(SOURCES)))
@@ -18,6 +18,14 @@ ECHO = echo
 RM = rm -rf
 MKDIR = mkdir
 OPTIMISATION_ARG = -O0
+
+ifeq (, $(shell which $(COMPILER)))
+	COMPILER = gcc
+endif
+
+ifeq (, $(shell which $(COMPILER)))
+	COMPILER = cc
+endif
 
 ifeq ($(ENV), "release")
 	OPTIMISATION_ARG = -O3
@@ -37,15 +45,16 @@ all: build_start initial_setup $(BINARY)
 	@$(ECHO) "Compilation finished!"
 	
 $(BINARY): $(OBJECTS)
-	@$(COMPILER_CMD)   $(OPTIMISATION_ARG) -pthread $(OBJECTS) -o $(BINARY_PATH)
+	@$(COMPILER_CMD)  -pthread $(OBJECTS) -o $(BINARY_PATH)
 
 $(BUILD_PATH)/%.o: %.c
 	@$(ECHO) Compiling $<
-	@$(COMPILER_CMD) -pthread $(OPTIMISATION_ARG) -c  $< -o $@ 
+	@$(COMPILER_CMD) -pthread -c  $< -o $@
 
 build_cleanup:
 	@$(RM) -f $(BUILD_PATH)
 	@$(ECHO) "build directory was removed"
+
 clean:
 	@$(RM) -f $(TARGET_PATH) $(BUILD_PATH)
 	@$(ECHO) "binaries and build directory where removed"
