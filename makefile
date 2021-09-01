@@ -29,12 +29,13 @@ build_start:
 	@$(ECHO) "Compiling $(BINARY)"
 all: build_start initial_setup $(BINARY)
 	@$(ECHO) "Compilation finished!"
+	
 $(BINARY): $(OBJECTS)
-	@$(COMPILER_CMD) $(OBJECTS) -o $(BINARY_PATH)
+	@$(COMPILER_CMD) -pthread $(OBJECTS) -o $(BINARY_PATH)
 
 $(BUILD_PATH)/%.o: %.c
 	@$(ECHO) Compiling $<
-	@$(COMPILER_CMD) -c $< -o $@
+	@$(COMPILER_CMD) -pthread -c $< -o $@ 
 
 build_cleanup:
 	@$(RM) -f $(BUILD_PATH)
@@ -54,8 +55,11 @@ run_with_build: all
 run_without_build:
 	@$(BINARY_PATH)
 
+rebuild: clean all
+
 help:
 	@$(ECHO) "Targets:"
 	@$(ECHO) "all - compile and build whatever is necessary"
 	@$(ECHO) "build_cleanup - remove build files"
 	@$(ECHO) "clean - cleanup build and binary"
+	@$(ECHO) "rebuild - clean and compile whatever is necessary"

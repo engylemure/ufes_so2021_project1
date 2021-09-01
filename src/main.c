@@ -2,8 +2,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#include "lib/lib.h"
 #include "lib/handlers.h"
+#include "lib/lib.h"
 
 int main(void) {
   char *debug_env = getenv("DEBUG");
@@ -17,32 +17,37 @@ int main(void) {
   bool should_continue = true;
   int status_code = 0;
   while (should_continue) {
-    CallArg *call_arg = prompt_user(state);
-    CallGroups *call_groups = call_arg->call_groups(call_arg);
-    int i;
-    for (i = 0; i < call_groups->len; i++) {
-      CallGroup *call_group = call_groups->groups[i];
-      switch (call_group->type) {
-      case Basic:
-        if (call_group->exec_amount)
-          basic_cmd_handler(call_group->exec_arr[0], true, &should_continue,
-                       &status_code);
-        break;
-      case Parallel:
-        parallel_cmd_handler(call_group, &should_continue, &status_code);
-        break;
-      case Sequential:
-        sequential_cmd_handler(call_group, &should_continue, &status_code);
-        break;
-      case Piped:
-        piped_cmd_handler(call_group, &should_continue, &status_code);
-        break;
-      default:
-        break;
+    create_input_thread(state);
+    CallArg *call_arg = join_input_thread();
+    if (call_arg != NULL) {
+      CallGroups *call_groups = call_arg->call_groups(call_arg);
+      int i;
+      for (i = 0; i < call_groups->len; i++) {
+        CallGroup *call_group = call_groups->groups[i];
+        switch (call_group->type) {
+        case Basic:
+          if (call_group->exec_amount)
+            basic_cmd_handler(state, call_group->exec_arr[0], true,
+                              &should_continue, &status_code);
+          break;
+        case Parallel:
+          parallel_cmd_handler(state, call_group, &should_continue,
+                               &status_code);
+          break;
+        case Sequential:
+          sequential_cmd_handler(state, call_group, &should_continue,
+                                 &status_code);
+          break;
+        case Piped:
+          piped_cmd_handler(state, call_group, &should_continue, &status_code);
+          break;
+        default:
+          break;
+        }
       }
+      call_groups->drop(call_groups);
+      call_arg->drop(call_arg);
     }
-    call_groups->drop(call_groups);
-    call_arg->drop(call_arg);
   }
   state->drop(state);
   return status_code;

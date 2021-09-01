@@ -1,10 +1,8 @@
 #include "handlers.h"
 
 int childs_in_background = 0;
-pid_t *piped_childs = NULL;
-int **pipes_from_child;
-int amount_of_piped_childs_active = 0;
-int amount_of_piped_childs = 0;
+pid_t child_pgid = 0;
+
 void sig_chld_handler(const int signal) {
   pid_t child_that_finished = wait(NULL);
   if (child_that_finished != -1) {
@@ -12,45 +10,44 @@ void sig_chld_handler(const int signal) {
       printf("[%d] %d Done\n", childs_in_background, child_that_finished);
       childs_in_background -= 1;
     }
-    if (amount_of_piped_childs_active != 0) {
-      int i;
-      for (i = 0; i < amount_of_piped_childs; i++) {
-        if (piped_childs[i] == child_that_finished) {
-          int *pipe_from_child = pipes_from_child[i];
-          close(pipe_from_child[1]);
-          amount_of_piped_childs_active -= 1;
-          if (amount_of_piped_childs_active == 0) {
-            int j;
-            for (j = 0; j < amount_of_piped_childs; j++) {
-              free(pipes_from_child[j]);
-            }
-            free(pipes_from_child);
-            free(piped_childs);
-            pipes_from_child = NULL;
-          }
-          break;
-        }
-      }
-    }
   }
 }
 
-pid_t child_pgid = 0;
+void *input_thread_func(void *arg) {
+  ShellState *state = arg;
+  pthread_exit(prompt_user(arg));
+}
+
+pthread_t input_thread;
+bool has_input_thread;
+
+void create_input_thread(ShellState *state) {
+  if (has_input_thread) {
+    pthread_cancel(input_thread);
+  }
+  pthread_create(&input_thread, NULL, input_thread_func, (void *)state);
+  has_input_thread = true;
+}
+
+CallArg *join_input_thread() {
+  CallArg *val = NULL;
+  pthread_join(input_thread, (void **)&val);
+  if (val == PTHREAD_CANCELED) {
+    printf("\n");
+    val = NULL;
+  }
+  has_input_thread = false;
+  return val;
+}
+
 void sig_int_handler(const int signal) {
   if (child_pgid) {
     killpg(child_pgid, signal);
-    if (amount_of_piped_childs) {
-      free(piped_childs);
-      piped_childs = NULL;
-      int j;
-      for (j = 0; j < amount_of_piped_childs; j++) {
-        close(pipes_from_child[j][1]);
-        free(pipes_from_child[j]);
-      }
-      free(pipes_from_child);
-      pipes_from_child = NULL;
-      amount_of_piped_childs = 0;
-    }
+  }
+  if (has_input_thread) {
+    pthread_cancel(input_thread);
+    pthread_detach(input_thread);
+    has_input_thread = false;
   }
   //   print_weird();
 }
@@ -65,7 +62,7 @@ void unknown_cmd_info(CallResult *res, bool *should_continue,
   }
 }
 
-pid_t basic_cmd_handler(ExecArgs *exec_args, bool should_wait,
+pid_t basic_cmd_handler(ShellState *state, ExecArgs *exec_args, bool should_wait,
                         bool *should_continue, int *status_code) {
   CallResult *res = exec_args->call(exec_args, true, should_wait);
   switch (res->status) {
@@ -73,6 +70,9 @@ pid_t basic_cmd_handler(ExecArgs *exec_args, bool should_wait,
     break;
   case Exit:
     *should_continue = false;
+    break;
+  case Cd:
+    state->change_dir(state, res->program_name);
     break;
   case UnknownCommand:
     unknown_cmd_info(res, should_continue, status_code);
@@ -83,22 +83,22 @@ pid_t basic_cmd_handler(ExecArgs *exec_args, bool should_wait,
   return child_pid;
 }
 
-void sequential_cmd_handler(CallGroup *call_group, bool *should_continue,
-                            int *status_code) {
+void sequential_cmd_handler(ShellState *state, CallGroup *call_group,
+                            bool *should_continue, int *status_code) {
   int i;
   for (i = 0; i < call_group->exec_amount; i++) {
-    basic_cmd_handler(call_group->exec_arr[i], true, should_continue,
+    basic_cmd_handler(state, call_group->exec_arr[i], true, should_continue,
                       status_code);
   }
 }
 
-void parallel_cmd_handler(CallGroup *call_group, bool *should_continue,
-                          int *status_code) {
+void parallel_cmd_handler(ShellState *state, CallGroup *call_group,
+                          bool *should_continue, int *status_code) {
   int exec_amount = call_group->exec_amount;
   pid_t child_pids[exec_amount];
   int i;
   for (i = 0; i < exec_amount; i++) {
-    child_pids[i] = basic_cmd_handler(call_group->exec_arr[i], false,
+    child_pids[i] = basic_cmd_handler(state, call_group->exec_arr[i], false,
                                       should_continue, status_code);
     if (i < exec_amount - 1) {
       childs_in_background += 1;
@@ -114,57 +114,63 @@ void parallel_cmd_handler(CallGroup *call_group, bool *should_continue,
   child_pgid = 0;
 }
 
-void piped_cmd_handler(CallGroup *call_group, bool *should_continue,
-                       int *status_code) {
+void piped_cmd_handler(ShellState *state, CallGroup *call_group,
+                       bool *should_continue, int *status_code) {
   int exec_amount = call_group->exec_amount;
-  pid_t *child_pids = malloc(sizeof(pid_t) * exec_amount);
-  int **pipes =
-      malloc(sizeof(int *) * (exec_amount - 1)); // [exec_amount - 1][2];
-  {
-    int i;
-    for (i = 0; i < exec_amount - 1; i++) {
-      pipes[i] = malloc(sizeof(int) * 2);
-      pipe(pipes[i]);
+  int i;
+  pid_t child_pgid = 0;
+  int pipes_len = exec_amount - 1;
+  int pipes[pipes_len][2];
+  for (i = 0; i < pipes_len; i++) {
+    if (pipe(pipes[i]) < 0) {
+      perror("pipe failed!\n");
+      exit(1);
     }
   }
-  piped_childs = child_pids;
-  pipes_from_child = pipes;
-  amount_of_piped_childs = amount_of_piped_childs_active = exec_amount - 1;
-  int i;
   for (i = 0; i < exec_amount; i++) {
     ExecArgs *exec_args = call_group->exec_arr[i];
     pid_t child_pid = fork();
-    child_pids[i] = child_pid;
     if (child_pid == -1) {
-      fprintf(stderr, "fork failed!\n");
-    } else if (child_pid > 0) {
-      setpgid(child_pid, child_pids[0]);
+      perror("fork failed!\n");
+      exit(1);
+    }
+    if (i == 0) {
+      child_pgid = child_pid ? child_pid : getpid();
+    }
+    if (child_pid) {
+      setpgid(child_pid, child_pgid);
     } else {
-      char *info = exec_args->fmt(exec_args);
-      if (i > 0) {
-        close(pipes[i - 1][1]);
-        dup2(pipes[i - 1][0], 0);
-      }
       if (i < exec_amount - 1) {
-        dup2(pipes[i][1], 1);
-      } else {
-        dup2(1, 1);
+        dup2(pipes[i][1], STDOUT_FILENO);
+        close(pipes[i][0]);
+      }
+      int stdin_fileno_idx = i - 1;
+      if (i > 0) {
+        dup2(pipes[i - 1][0], STDIN_FILENO);
+        close(pipes[i - 1][1]);
+      }
+      for (i = 0; i < pipes_len; i++) {
+        if (stdin_fileno_idx >= 0 && stdin_fileno_idx != i) {
+          close(pipes[i][1]);
+          close(pipes[i][0]);
+        }
       }
       exec_args->call(exec_args, false, false);
       *should_continue = false;
       *status_code = UnknownCommand;
       break;
     }
-    if (i < exec_amount - 2 && i >= 0) {
-      close(pipes[i][1]);
+  }
+  if (i == exec_amount) {
+    int j;
+    // Closing opened and unused pipes from the parent
+    for (j = 0; j < pipes_len; j++) {
+      close(pipes[j][1]);
+      close(pipes[j][0]);
     }
+    while (waitpid(-child_pgid, NULL, WUNTRACED) != -1)
+      ;
   }
-  child_pgid = child_pids[0];
-  if (call_group->exec_amount > 1) {
-    pid_t child_to_wait = child_pids[exec_amount - 1];
-    waitpid(child_to_wait, NULL, WUNTRACED);
-  }
-  child_pgid = 0;
 }
 
 const char *weird_msg = "\nI feel weeird...\n";
