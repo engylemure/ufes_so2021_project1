@@ -33,7 +33,7 @@ int main(void) {
                             basic_cmd_handler(state, call_group->exec_arr[0], true,
                                               &should_continue, &status_code);
                         break;
-                    case Parallel:
+                    case Background:
                         parallel_cmd_handler(state, call_group, &should_continue,
                                              &status_code);
                         break;

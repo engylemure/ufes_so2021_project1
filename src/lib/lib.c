@@ -138,7 +138,7 @@ void drop_call_arg(CallArg *self) {
 ExecArgs *exec_args_from_vec_str(Vec *vec) {
     ExecArgs *self = malloc(sizeof(ExecArgs));
     self->drop = drop_exec_args;
-    self->fmt = (char *(*)(struct execArgs *self)) fmt_exec_arg;
+    self->fmt = (char *(*) (struct execArgs * self)) fmt_exec_arg;
     self->call = basic_exec_args_call;
     self->argc = vec->length;
     self->argv = malloc(sizeof(char *) * (self->argc + 1));
@@ -210,8 +210,7 @@ CallResult *basic_exec_args_call(ExecArgs *exec_args, bool should_fork,
             } else {
                 aux_str = strdup(exec_args->argv[1]);
             }
-        }
-            break;
+        } break;
         case UnknownCommand:
             aux_str = strdup(program_name);
             break;
@@ -241,7 +240,7 @@ void drop_call_res(CallResult *self) {
 }
 
 CallGroup *call_group_from_vec_exec_args(Vec *vec_exec_args,
-                                         enum CallType type) {
+                                         enum CallType type, bool is_background) {
     CallGroup *self = malloc(sizeof(CallGroup));
     unsigned int count = vec_exec_args->length;
     ExecArgs **exec_arr = malloc(sizeof(ExecArgs *) * count);
@@ -255,6 +254,7 @@ CallGroup *call_group_from_vec_exec_args(Vec *vec_exec_args,
     self->exec_arr = exec_arr;
     self->drop = drop_call_group;
     self->file_name = NULL;
+    self->is_background = is_background;
     return self;
 }
 
@@ -339,8 +339,8 @@ Vec *process_call_arg(CallArg *call_arg) {
         has_error = true;
         i = str_len;
     }
-    void (*push_in_buffer)(Vec *vec, char c) =
-    (void (*)(Vec *, char)) char_buffer->push;
+    void (*push_in_buffer)(Vec * vec, char c) =
+            (void (*)(Vec *, char)) char_buffer->push;
     for (; i < str_len; i++) {
         c = call_arg->arg[i];
         switch (c) {
@@ -351,7 +351,7 @@ Vec *process_call_arg(CallArg *call_arg) {
                     push_in_buffer(char_buffer, c);
                 } else if (char_buffer->length) {
                     args->push(args, new_parse_arg_res(
-                            str_from_vec_char(&char_buffer, true), Simple));
+                                             str_from_vec_char(&char_buffer, true), Simple));
                     arg_parse_state = Ignore;
                 };
                 break;
@@ -359,8 +359,7 @@ Vec *process_call_arg(CallArg *call_arg) {
                 args->push(args,
                            new_parse_arg_res(str_from_vec_char(&char_buffer, true), Bar));
                 arg_parse_state = Ignore;
-            }
-                break;
+            } break;
             case '&': {
                 enum ArgType type = At;
                 if (i + 1 < str_len && call_arg->arg[i + 1] == '&') {
@@ -370,8 +369,7 @@ Vec *process_call_arg(CallArg *call_arg) {
                 args->push(
                         args, new_parse_arg_res(str_from_vec_char(&char_buffer, true), type));
                 arg_parse_state = Ignore;
-            }
-                break;
+            } break;
             case '"':
                 if (char_buffer->length &&
                     (char) (uintptr_t) char_buffer->get(char_buffer, char_buffer->length - 1) == '\\') {
@@ -380,7 +378,7 @@ Vec *process_call_arg(CallArg *call_arg) {
                 } else {
                     if (arg_parse_state == LeftQuote) {
                         args->push(args, new_parse_arg_res(
-                                str_from_vec_char(&char_buffer, true), Quoted));
+                                                 str_from_vec_char(&char_buffer, true), Quoted));
                         arg_parse_state = Ignore;
                     } else {
                         arg_parse_state = LeftQuote;
@@ -421,14 +419,14 @@ CallGroups *new_call_groups(int call_group_count, bool has_parsing_error) {
     CallGroups *self = malloc(sizeof(CallGroups));
     self->drop = *drop_call_groups;
     self->groups = call_group_count > 0 || has_parsing_error
-                   ? malloc(sizeof(CallGroups *) * call_group_count)
-                   : NULL;
+                           ? malloc(sizeof(CallGroups *) * call_group_count)
+                           : NULL;
     self->len = has_parsing_error ? 0 : call_group_count;
     self->has_parsing_error = has_parsing_error;
     return self;
 }
 
-void call_group_specific_type(enum CallType expected_type, enum CallType *type,
+void call_group_specific_type(enum CallType expected_type, bool *is_background, enum CallType *type,
                               Vec **vec_str, Vec *vec_call_group,
                               Vec **vec_exec_args) {
     ExecArgs *exec_arg = exec_args_from_vec_str(*vec_str);
@@ -439,9 +437,10 @@ void call_group_specific_type(enum CallType expected_type, enum CallType *type,
     } else {
         (*vec_exec_args)->push(*vec_exec_args, exec_arg);
         vec_call_group->push(vec_call_group,
-                             call_group_from_vec_exec_args(*vec_exec_args, *type));
+                             call_group_from_vec_exec_args(*vec_exec_args, *type, *is_background));
         *vec_exec_args = new_vec_exec_args();
         *type = Basic;
+        *is_background = false;
     }
 }
 
@@ -452,6 +451,7 @@ CallGroups *call_groups(CallArg *call_arg) {
         Vec *vec_exec_args = new_vec_exec_args();
         Vec *vec_string = new_vec_string();
         enum CallType type = Basic;
+        bool is_background = false;
         int len = args->length;
         ParseArgRes **args_res = (ParseArgRes **) args->take_arr(args);
         int i;
@@ -466,17 +466,17 @@ CallGroups *call_groups(CallArg *call_arg) {
             switch (parse_arg_res->type) {
                 case Bar:
                     call_group_specific_type(Piped, &type, &vec_string, vec_call_group,
-                                             &vec_exec_args);
+                                             &vec_exec_args, &is_background);
                     free(str);
                     break;
                 case At:
-                    call_group_specific_type(Parallel, &type, &vec_string, vec_call_group,
-                                             &vec_exec_args);
+                    call_group_specific_type(-1, &type, &vec_string, vec_call_group,
+                                             &vec_exec_args, &is_background);
                     free(str);
                     break;
                 case DoubleAt:
                     call_group_specific_type(Sequential, &type, &vec_string, vec_call_group,
-                                             &vec_exec_args);
+                                             &vec_exec_args, &is_background);
                     free(str);
                     break;
                 default:
@@ -492,7 +492,7 @@ CallGroups *call_groups(CallArg *call_arg) {
             vec_string->drop(vec_string);
         }
         vec_call_group->push(vec_call_group,
-                             call_group_from_vec_exec_args(vec_exec_args, type));
+                             call_group_from_vec_exec_args(vec_exec_args, type, false));
         if (DEBUG_IS_ON)
             vec_call_group->print(vec_call_group, fmt_call_group);
         int call_group_count = vec_call_group->length;

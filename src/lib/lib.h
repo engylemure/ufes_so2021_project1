@@ -9,7 +9,7 @@
 enum CallType {
     Basic,
     Sequential,
-    Parallel,
+    Background,
     Piped,
     RedirectStdout,
     RedirectStdIn,
@@ -53,6 +53,7 @@ typedef struct execArgs {
 typedef struct callGroup {
     unsigned int exec_amount;
     enum CallType type;
+    bool is_background;
     char *file_name;
     ExecArgs **exec_arr;
 
@@ -165,7 +166,7 @@ void drop_call_res(CallResult *self);
  * CallGroup functions
  */
 CallGroup *call_group_from_vec_exec_args(Vec *vec_exec_args,
-                                         enum CallType type);
+                                         enum CallType type, bool is_background);
 
 char *fmt_call_group(void *data);
 

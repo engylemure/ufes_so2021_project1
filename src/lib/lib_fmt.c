@@ -43,8 +43,8 @@ char *fmt_call_group(void *data) {
         case Basic:
             call_group_type = "Basic";
             break;
-        case Parallel:
-            call_group_type = "Parallel";
+        case Background:
+            call_group_type = "Background";
             break;
         case Piped:
             call_group_type = "Piped";
