@@ -9,7 +9,6 @@
 enum CallType {
     Basic,
     Sequential,
-    Background,
     Piped,
     RedirectStdout,
     RedirectStdIn,

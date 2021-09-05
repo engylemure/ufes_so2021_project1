@@ -23,7 +23,7 @@ char *fmt_string(void *data) {
 // CallGroup
 char *fmt_call_group(void *data) {
     CallGroup *call_group = data;
-    char *formatted_call_group = malloc(sizeof(char) * BUFFER_MAX_SIZE / 2);
+    char *formatted_call_group = malloc(sizeof(char) * BUFFER_MAX_SIZE >> 1);
     formatted_call_group[0] = '[';
     formatted_call_group[1] = '\0';
     int i;
@@ -43,9 +43,6 @@ char *fmt_call_group(void *data) {
         case Basic:
             call_group_type = "Basic";
             break;
-        case Background:
-            call_group_type = "Background";
-            break;
         case Piped:
             call_group_type = "Piped";
             break;
@@ -61,6 +58,9 @@ char *fmt_call_group(void *data) {
     }
     strcat(formatted_call_group, call_group_type);
     strcat(formatted_call_group, ")");
+    char bg_info[15];
+    sprintf(bg_info, "(bg:%s)", call_group->is_background ? "true":"false");
+    strcat(formatted_call_group, bg_info);
     return formatted_call_group;
 }
 

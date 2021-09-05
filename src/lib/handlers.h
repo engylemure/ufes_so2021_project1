@@ -32,18 +32,18 @@ void sig_usr_handler(int signal);
  */
 pid_t basic_cmd_handler(ShellState *state, ExecArgs *exec_args,
                         bool should_wait, bool *should_continue,
-                        int *status_code);
+                        int *status_code, bool is_background);
 
 void unknown_cmd_info(CallResult *res, bool *should_continue,
                       int *status_code);
 
 void sequential_cmd_handler(ShellState *state, CallGroup *call_group,
-                            bool *should_continue, int *status_code);
+                            bool *should_continue, int *status_code, bool is_background);
 
-void parallel_cmd_handler(ShellState *state, CallGroup *call_group,
-                          bool *should_continue, int *status_code);
+// void parallel_cmd_handler(ShellState *state, CallGroup *call_group,
+//                           bool *should_continue, int *status_code);
 
 void piped_cmd_handler(ShellState *state, CallGroup *call_group,
-                       bool *should_continue, int *status_code);
+                       bool *should_continue, int *status_code, bool is_background);
 
 #endif

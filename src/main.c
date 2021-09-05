@@ -27,22 +27,25 @@ int main(void) {
             int i;
             for (i = 0; i < call_groups->len; i++) {
                 CallGroup *call_group = call_groups->groups[i];
+//                char* call_group_str = fmt_call_group(call_group);
+//                printf("%s\n", call_group_str);
+//                free(call_group_str);
                 switch (call_group->type) {
                     case Basic:
                         if (call_group->exec_amount)
                             basic_cmd_handler(state, call_group->exec_arr[0], true,
-                                              &should_continue, &status_code);
+                                              &should_continue, &status_code, call_group->is_background);
                         break;
-                    case Background:
-                        parallel_cmd_handler(state, call_group, &should_continue,
-                                             &status_code);
+                    // case Background:
+                    //     parallel_cmd_handler(state, call_group, &should_continue,
+                    //                          &status_code);
                         break;
                     case Sequential:
                         sequential_cmd_handler(state, call_group, &should_continue,
-                                               &status_code);
+                                               &status_code, call_group->is_background);
                         break;
                     case Piped:
-                        piped_cmd_handler(state, call_group, &should_continue, &status_code);
+                        piped_cmd_handler(state, call_group, &should_continue, &status_code, call_group->is_background);
                         break;
                     default:
                         break;

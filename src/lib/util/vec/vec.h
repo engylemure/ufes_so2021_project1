@@ -6,15 +6,17 @@
 
 #define INITIAL_VEC_CAPACITY 64
 
+typedef long unsigned int uint64;
+
 typedef struct vec {
     void **_arr;
-    unsigned int _elem_size;
-    unsigned int _capacity;
-    unsigned int length;
+    uint64 _elem_size;
+    uint64 _capacity;
+    uint64 length;
 
     void (*push)(struct vec *, void *);
 
-    void *(*get)(struct vec *, unsigned int);
+    void *(*get)(struct vec *, uint64);
 
     void (*drop)(struct vec *);
 
@@ -27,13 +29,13 @@ typedef struct vec {
     void **(*take_arr)(struct vec *);
 } Vec;
 
-Vec *new_vec_with_capacity(unsigned int elem_size, unsigned int capacity);
+Vec *new_vec_with_capacity(uint64 elem_size, uint64 capacity);
 
-Vec *new_vec(unsigned int elem_size);
+Vec *new_vec(uint64 elem_size);
 
 void vec_push(Vec *vec, void *elem);
 
-void *vec_get(Vec *vec, unsigned int idx);
+void *vec_get(Vec *vec, uint64 idx);
 
 void vec_drop(Vec *vec);
 

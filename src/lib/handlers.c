@@ -1,5 +1,17 @@
 #include "handlers.h"
 
+#define BACKGROUND_MACRO(is_background, ret_val) if (is_background) {\
+pid_t child_pid = fork();\
+if (child_pid == -1) {\
+perror("fork failed!\n");\
+exit(2);\
+} else if (child_pid > 0) {\
+return ret_val;\
+} else {\
+*should_continue = false;\
+}\
+}
+
 int children_in_bg = 0;
 pid_t child_pgid = 0;
 
@@ -71,7 +83,8 @@ void unknown_cmd_info(CallResult *res, bool *should_continue,
 }
 
 pid_t basic_cmd_handler(ShellState *state, ExecArgs *exec_args, bool should_wait,
-                        bool *should_continue, int *status_code) {
+                        bool *should_continue, int *status_code, bool is_background) {
+    BACKGROUND_MACRO(is_background, 0);
     CallResult *res = exec_args->call(exec_args, true, should_wait);
     switch (res->status) {
         case Continue:
@@ -92,11 +105,12 @@ pid_t basic_cmd_handler(ShellState *state, ExecArgs *exec_args, bool should_wait
 }
 
 void sequential_cmd_handler(ShellState *state, CallGroup *call_group,
-                            bool *should_continue, int *status_code) {
+                            bool *should_continue, int *status_code, bool is_background) {
+    BACKGROUND_MACRO(is_background, );
     int i;
     for (i = 0; i < call_group->exec_amount; i++) {
         basic_cmd_handler(state, call_group->exec_arr[i], true, should_continue,
-                          status_code);
+                          status_code, false);
     }
 }
 
@@ -107,7 +121,7 @@ void parallel_cmd_handler(ShellState *state, CallGroup *call_group,
     int i;
     for (i = 0; i < exec_amount; i++) {
         child_pids[i] = basic_cmd_handler(state, call_group->exec_arr[i], false,
-                                          should_continue, status_code);
+                                          should_continue, status_code, false);
         if (i < exec_amount - 1) {
             children_in_bg += 1;
             printf("[%d] %d\n", children_in_bg, child_pids[i]);
@@ -123,7 +137,8 @@ void parallel_cmd_handler(ShellState *state, CallGroup *call_group,
 }
 
 void piped_cmd_handler(ShellState *state, CallGroup *call_group,
-                       bool *should_continue, int *status_code) {
+                       bool *should_continue, int *status_code, bool is_background) {
+    BACKGROUND_MACRO(is_background, );
     int exec_amount = call_group->exec_amount;
     int i;
     pid_t child_pgid = 0;

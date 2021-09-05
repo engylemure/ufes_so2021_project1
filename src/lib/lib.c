@@ -71,6 +71,23 @@ char *pretty_pwd(ShellState *self) {
         return strdup("~/");
     }
     char *pwd = strstr(self->pwd, self->home);
+    bool in_home = pwd != NULL;
+    bool large_dir = false;
+    {
+        char *orig_pwd = strdup(in_home ? pwd : self->pwd);
+        char *aux_pwd = orig_pwd;
+        char *last_ptr = aux_pwd;
+        char *last_last_ptr = aux_pwd;
+        while ((aux_pwd = strchr(aux_pwd, '/')) != NULL) {
+            last_last_ptr = last_ptr;
+            last_ptr = aux_pwd;
+            aux_pwd = aux_pwd + sizeof(char);
+            printf("%s\n", aux_pwd);
+        }
+        large_dir = last_last_ptr == aux_pwd;
+        printf("%s\n", last_last_ptr);
+        free(orig_pwd);
+    }
     if (pwd != NULL) {
         pwd = pwd + strlen(self->home);
         char *prettied_pwd = malloc(sizeof(char) * (strlen(pwd) + 2));
@@ -426,9 +443,9 @@ CallGroups *new_call_groups(int call_group_count, bool has_parsing_error) {
     return self;
 }
 
-void call_group_specific_type(enum CallType expected_type, bool *is_background, enum CallType *type,
+void call_group_specific_type(enum CallType expected_type, enum CallType *type,
                               Vec **vec_str, Vec *vec_call_group,
-                              Vec **vec_exec_args) {
+                              Vec **vec_exec_args, bool* is_background) {
     ExecArgs *exec_arg = exec_args_from_vec_str(*vec_str);
     *vec_str = new_vec_string();
     if (*type == Basic || *type == expected_type) {
@@ -470,8 +487,12 @@ CallGroups *call_groups(CallArg *call_arg) {
                     free(str);
                     break;
                 case At:
-                    call_group_specific_type(-1, &type, &vec_string, vec_call_group,
+                    is_background = true;
+                    call_group_specific_type(type, &type, &vec_string, vec_call_group,
                                              &vec_exec_args, &is_background);
+                    vec_string->print(vec_string, fmt_string);
+                    vec_exec_args->print(vec_exec_args, fmt_exec_arg);
+                    vec_call_group->print(vec_call_group, fmt_call_group);
                     free(str);
                     break;
                 case DoubleAt:
@@ -479,6 +500,7 @@ CallGroups *call_groups(CallArg *call_arg) {
                                              &vec_exec_args, &is_background);
                     free(str);
                     break;
+                case Simple:
                 default:
                     vec_string->push(vec_string, str);
                     break;
@@ -492,7 +514,7 @@ CallGroups *call_groups(CallArg *call_arg) {
             vec_string->drop(vec_string);
         }
         vec_call_group->push(vec_call_group,
-                             call_group_from_vec_exec_args(vec_exec_args, type, false));
+                             call_group_from_vec_exec_args(vec_exec_args, type, is_background));
         if (DEBUG_IS_ON)
             vec_call_group->print(vec_call_group, fmt_call_group);
         int call_group_count = vec_call_group->length;
