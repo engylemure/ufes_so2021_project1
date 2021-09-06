@@ -10,13 +10,12 @@
 #include <unistd.h>
 
 #include "lib.h"
-#include "util/string_util/string_util.h"
 
 void print_weird();
 
 void create_input_thread(ShellState *state);
 
-CallArg *join_input_thread();
+char *join_input_thread();
 
 /*
  * Signal Handlers
@@ -39,9 +38,6 @@ void unknown_cmd_info(CallResult *res, bool *should_continue,
 
 void sequential_cmd_handler(ShellState *state, CallGroup *call_group,
                             bool *should_continue, int *status_code, bool is_background);
-
-// void parallel_cmd_handler(ShellState *state, CallGroup *call_group,
-//                           bool *should_continue, int *status_code);
 
 void piped_cmd_handler(ShellState *state, CallGroup *call_group,
                        bool *should_continue, int *status_code, bool is_background);

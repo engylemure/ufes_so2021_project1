@@ -27,7 +27,7 @@ void sig_chld_handler(const int signal) {
 
 void *input_thread_func(void *arg) {
     ShellState *state = arg;
-    pthread_exit(prompt_user(arg));
+    pthread_exit(state->prompt_user());
 }
 
 pthread_t input_thread;
@@ -41,15 +41,15 @@ void create_input_thread(ShellState *state) {
     has_input_thread = true;
 }
 
-CallArg *join_input_thread() {
-    CallArg *val = NULL;
-    pthread_join(input_thread, (void **) &val);
-    if (val == PTHREAD_CANCELED) {
+char* join_input_thread() {
+    char *input;
+    pthread_join(input_thread, (void **) &input);
+    if (input == PTHREAD_CANCELED) {
         printf("\n");
-        val = NULL;
+        input = NULL;
     }
     has_input_thread = false;
-    return val;
+    return input;
 }
 
 void cancel_thread() {
@@ -86,14 +86,14 @@ pid_t basic_cmd_handler(ShellState *state, ExecArgs *exec_args, bool should_wait
                         bool *should_continue, int *status_code, bool is_background) {
     BACKGROUND_MACRO(is_background, 0);
     CallResult *res = exec_args->call(exec_args, true, should_wait);
-    switch (res->status) {
+    switch (res->shell_behavior) {
         case Continue:
             break;
         case Exit:
             *should_continue = false;
             break;
         case Cd:
-            state->change_dir(state, res->additional_data);
+            state->change_pwd(res->additional_data);
             break;
         case UnknownCommand:
             unknown_cmd_info(res, should_continue, status_code);
@@ -178,9 +178,11 @@ void piped_cmd_handler(ShellState *state, CallGroup *call_group,
                     close(pipes[i][0]);
                 }
             }
-            exec_args->call(exec_args, false, false);
+            CallResult* res = exec_args->call(exec_args, false, false);
+            res->drop(res);
             *should_continue = false;
             *status_code = UnknownCommand;
+            printf("Unknown command %s\n", exec_args->argv[0]);
             break;
         }
     }

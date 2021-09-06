@@ -1,8 +1,14 @@
 #include "vec.h"
 
-Vec *new_vec_with_size(unsigned int elem_size, unsigned int capacity) {
+const int MAX_VEC_ELEM_SIZE = sizeof(void*);
+
+Vec *new_vec_with_size(uint64 elem_size, uint64 capacity) {
     if (elem_size == 0) {
         perror("You shouldn't use vec with elements without size!\n");
+        exit(1);
+    }
+    if (elem_size > MAX_VEC_ELEM_SIZE) {
+        fprintf(stderr, "You shouldn't use vec with elements with size greater than %d\n", MAX_VEC_ELEM_SIZE);
         exit(1);
     }
     Vec *vec = malloc(sizeof(Vec));
@@ -20,14 +26,14 @@ Vec *new_vec_with_size(unsigned int elem_size, unsigned int capacity) {
     return vec;
 }
 
-Vec *new_vec(unsigned int elem_size) {
+Vec *new_vec(uint64 elem_size) {
     return new_vec_with_size(elem_size, INITIAL_VEC_CAPACITY);
 }
 
 void resize_vec(Vec *vec) {
     if (vec->length + 1 > vec->_capacity) {
-        unsigned int capacity_by_initial = vec->_capacity / INITIAL_VEC_CAPACITY;
-        unsigned int new_capacity =
+        uint64 capacity_by_initial = vec->_capacity / INITIAL_VEC_CAPACITY;
+        uint64 new_capacity =
                 ((capacity_by_initial ? capacity_by_initial : 1) * INITIAL_VEC_CAPACITY) << 1;
         void **new_arr = realloc(vec->_arr, new_capacity * sizeof(void *));
         if (new_arr == NULL) {
@@ -47,7 +53,7 @@ void vec_push(Vec *vec, void *elem) {
     vec->length += 1;
 }
 
-void *vec_get(Vec *vec, unsigned int idx) {
+void *vec_get(Vec *vec, uint64 idx) {
     if (idx <= vec->length - 1) {
         return vec->_arr[idx];
     } else {
