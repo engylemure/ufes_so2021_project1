@@ -1,7 +1,3 @@
-//
-// Created by jordao on 04/09/2021.
-//
-
 #include "lib.h"
 #include "util/vec/vec.h"
 #include <dirent.h>
@@ -12,10 +8,12 @@
 #include <string.h>
 #include <sys/wait.h>
 
+// Maximum value for a PATH name considering the null termination character.
 #define PATH_MAX 4096
-#define str_equals(self, other) strcmp(self, other) == 0
+// Macro to retrieve the human readable value of a "bool"
 #define bool_str(val) val ? "true" : "false"
 
+// function to format a string into this same string enclosed by reticence
 char *fmt_string(void *data) {
     char *str = (char *) data;
     uint64 fmt_len = strlen(str) + 3;
@@ -24,10 +22,12 @@ char *fmt_string(void *data) {
     return fmt;
 }
 
+// function to allocate a vector of strings
 Vec *new_vec_string() { return new_vec(sizeof(char *)); }
 
 bool DEBUG_IS_ON = false;
 
+// function to debug or not this lib
 void debug_lib(bool should_debug) {
     if (should_debug) {
         DEBUG_IS_ON = true;
@@ -38,13 +38,14 @@ ShellState *new_shell_state() {
     ShellState *self = malloc(sizeof(ShellState));
     self->cwd = shell_state_cwd;
     self->home = shell_state_home;
-    self->change_pwd = shell_state_change_pwd;
-    self->simple_pwd = shell_state_simple_pwd;
+    self->change_cwd = shell_state_change_cwd;
+    self->simple_cwd = shell_state_simple_cwd;
     self->prompt_user = shell_state_prompt_user;
     self->drop = shell_state_drop;
     return self;
 }
 
+// function to retrieve the actual working directory of the shell
 char *shell_state_cwd() {
     char cwd[PATH_MAX];
     if (getcwd(cwd, sizeof(cwd)) != NULL) {
@@ -55,6 +56,7 @@ char *shell_state_cwd() {
     }
 }
 
+// function to retrieve home directory of the actual user
 char *shell_state_home() {
     const char *home;
     if ((home = getenv("HOME")) == NULL) {
@@ -63,7 +65,8 @@ char *shell_state_home() {
     return home != NULL ? strdup(home) : NULL;
 }
 
-void shell_state_change_pwd(char *new_dir) {
+// function to change the actual working directory
+void shell_state_change_cwd(char *new_dir) {
     DIR *dir = opendir(new_dir);
     char real_dir_path[PATH_MAX];
     if (dir != NULL && realpath(new_dir, real_dir_path)) {
@@ -73,16 +76,21 @@ void shell_state_change_pwd(char *new_dir) {
     }
     closedir(dir);
 }
-
-char *shell_state_simple_pwd() {
+ 
+// function to simplify the presentation of the working directory
+// hiding the home directory under the '~' and any directory that 
+// would be 2 directories above using the '...' 
+char *shell_state_simple_cwd() {
     char *cwd = shell_state_cwd();
     char *home = shell_state_home();
+    // verify if the working directory is the same as the home directory
     if (str_equals(cwd, home)) {
         return strdup("~/");
     }
     char *cwd_simplified = strstr(cwd, home);
     bool cwd_has_home = cwd_simplified != NULL;
-    if (cwd_simplified != NULL) {
+    // removing home directory from the working directory
+    if (cwd_has_home) {
         cwd_simplified = cwd_simplified + strlen(home);
     } else {
         cwd_simplified = cwd;
@@ -95,15 +103,18 @@ char *shell_state_simple_pwd() {
         last_ptr = aux_pwd;
         aux_pwd = aux_pwd + sizeof(char);
     }
-    bool large_dir = last_last_ptr != aux_pwd;
+    bool large_dir = last_last_ptr != last_ptr;
     unsigned int cwd_simplified_len = strlen(last_last_ptr) + (cwd_has_home ? 3 : 1) + (large_dir ? 3 : 0);
     cwd_simplified = malloc(sizeof(char) * cwd_simplified_len);
     cwd_simplified[0] = '\0';
+    // adding the ~ to inform the user that he is under the home directory
     if (cwd_has_home) {
-        strcat(cwd_simplified, "~/");
+        strcat(cwd_simplified, "~");
     }
+    // adding the ~ to inform the user that he has more than 2 directories
+    // above the presented directory
     if (large_dir) {
-        strcat(cwd_simplified, "..");
+        strcat(cwd_simplified, "/...");
     }
     strcat(cwd_simplified, last_last_ptr);
     free(cwd);
@@ -115,17 +126,20 @@ void shell_state_drop(ShellState *self) {
     free(self);
 }
 
+// Some ansi values to manipulate the shell color presentation
 const char BlueAnsi[] = "\033[94m";
 const char JojoAnsi[] = "\033[95m";
 const char EndAnsi[] = "\033[0m";
 const char RedAnsi[] = "\033[91m";
 const char YellowAnsi[] = "\033[93m";
 
+// function used to prompt the user, returning the string provided by the user we
+// are allowing the user to provide a input with a maximum value of PATH_MAX
 char *shell_state_prompt_user(ShellState *state) {
     if (state != NULL) {
         char *input = malloc(sizeof(char) * PATH_MAX);
         fflush(stdout);
-        char *pwd = state->simple_pwd();
+        char *pwd = state->simple_cwd();
         printf("%s%s > %s%svsh%s%s > %s", BlueAnsi, pwd, EndAnsi, JojoAnsi, EndAnsi,
                BlueAnsi, EndAnsi);
         free(pwd);
@@ -265,9 +279,16 @@ CallResult *exec_args_call(struct execArgs *exec_args, bool should_fork, bool sh
     char *aux_str;
     switch (shell_behavior) {
         case Cd: {
-            if (exec_args->argc == 1 || str_equals(exec_args->argv[1], "~")) {
+            if (exec_args->argc == 1) {
                 char *home_env = shell_state_home();
                 aux_str = home_env != NULL ? strdup(home_env) : NULL;
+            } else if (exec_args->argv[1][0] == '~') {
+                char *home_env = shell_state_home();
+                unsigned int home_len = strlen(home_env);
+                unsigned int aux_str_len = home_len + strlen((exec_args->argv[1]));
+                aux_str = malloc(sizeof(char)*aux_str_len);
+                sprintf(aux_str, "%s%s", home_env, (exec_args->argv[1]+1));
+                free(home_env);
             } else {
                 aux_str = strdup(exec_args->argv[1]);
             }

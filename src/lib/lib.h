@@ -1,7 +1,3 @@
-//
-// Created by jordao on 04/09/2021.
-//
-
 #ifndef VSH_NEW_LIB_H
 #define VSH_NEW_LIB_H
 
@@ -9,6 +5,7 @@
 #include <stdbool.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <string.h>
 
 /*
  * error codes
@@ -24,6 +21,7 @@ enum ErrorCodes {
 Vec *new_vec_string();
 char *fmt_string(void *);
 void debug_lib(bool);
+#define str_equals(self, other) strcmp(self, other) == 0
 
 /*
  * CallType
@@ -53,9 +51,9 @@ typedef struct shellState {
 
     char *(*home)();
 
-    void (*change_pwd)(char *new_dir);
+    void (*change_cwd)(char *new_dir);
 
-    char *(*simple_pwd)();
+    char *(*simple_cwd)();
     char *(*prompt_user)();
     void (*drop)(struct shellState *state);
 } ShellState;
@@ -66,9 +64,9 @@ char *shell_state_cwd();
 
 char *shell_state_home();
 
-void shell_state_change_pwd(char *);
+void shell_state_change_cwd(char *);
 
-char *shell_state_simple_pwd();
+char *shell_state_simple_cwd();
 
 void shell_state_drop(ShellState *);
 char *shell_state_prompt_user();

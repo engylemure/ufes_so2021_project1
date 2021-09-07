@@ -93,7 +93,7 @@ pid_t basic_cmd_handler(ShellState *state, ExecArgs *exec_args, bool should_wait
             *should_continue = false;
             break;
         case Cd:
-            state->change_pwd(res->additional_data);
+            state->change_cwd(res->additional_data);
             break;
         case UnknownCommand:
             unknown_cmd_info(res, should_continue, status_code);

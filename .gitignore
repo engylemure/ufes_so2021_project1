@@ -8,7 +8,6 @@ target/
 .vscode
 .idea
 cmake-build-debug
-CMakeLists.txt
 
 # dump core
 vgcore.*
