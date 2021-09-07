@@ -354,7 +354,12 @@ char *call_group_fmt(CallGroup *self) {
     return str;
 }
 
-void call_group_print(CallGroup *);
+void call_group_print(CallGroup *self) {
+    char* str = self->fmt(self);
+    printf("%s", str);
+    free(str);
+}
+
 void call_group_drop(CallGroup *self) {
     int i;
     for (i = 0; i < self->exec_amount; i++) {

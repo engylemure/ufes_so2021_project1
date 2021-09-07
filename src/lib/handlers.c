@@ -12,6 +12,102 @@ return ret_val;\
 }\
 }
 
+const Vec* vec_bg_execution;
+
+BgExecution* new_bg_execution(pid_t pgid, Vec* child_pids) {
+    BgExecution* val = malloc(sizeof(BgExecution));
+    val->child_pids = child_pids;
+    val->pgid = pgid;
+    val->clear_child = bg_execution_clear_child;
+    val->drop = bg_execution_drop;
+    val->print = bg_execution_print;
+    val->fmt = bg_execution_fmt;
+    return val;
+}
+
+char* bg_execution_fmt(BgExecution *self) {
+    char* str = malloc(sizeof(char)*100);
+    sprintf(str, "BgExecution { pgid: %d, child_pids_len: %d }", self->pgid, self->child_pids->length);
+    return str;
+}
+
+void bg_execution_print(BgExecution *self) {
+    printf("BgExecution { pgid: %d }", self->pgid);
+}
+
+void bg_execution_drop(BgExecution* self) {
+    if (self->child_pids != NULL) {
+        Vec* child_pids = self->child_pids;
+        child_pids->drop(child_pids);
+        self->child_pids = NULL;
+    }
+    free(self);
+}
+
+bool bg_execution_clear_child(BgExecution* self, pid_t child_pid) {
+    if (self->child_pids->length) {
+        Vec* child_pids = self->child_pids;
+        int i;
+        for(i = 0; i < child_pids->length; i++ ) {
+            pid_t pid = child_pids->_arr[i];
+            if (pid == child_pid) {
+                child_pids->take(child_pids, i);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void start_bg_execution() {
+    vec_bg_execution = new_vec(sizeof(BgExecution*));
+}
+
+void clear_child_execution(pid_t child_pid) {
+    if (vec_bg_execution->length) {
+        int i;
+        for (i = 0; i < vec_bg_execution->length; i++) {
+            BgExecution* bg_execution = vec_bg_execution->_arr[i];
+            bool has_child = bg_execution->clear_child(bg_execution, child_pid);
+            if (has_child) {
+                printf("[%d] %d\n", i+1, child_pid);
+            }
+            if (has_child && bg_execution->child_pids->length == 0) {
+                vec_bg_execution->take(vec_bg_execution, i);
+                bg_execution->drop(bg_execution);
+                printf("[%d] + Done\n", i+1);
+            }
+        }
+    }
+}
+
+void clear_bg_execution(pid_t* pgid) {
+    if (pgid == NULL) {
+        BgExecution* bg_execution;
+        while((bg_execution = vec_bg_execution->pop(vec_bg_execution)) != NULL) {
+             killpg(bg_execution->pgid, SIGTERM);
+        }
+    } else {
+         int i;
+         for (i = 0; i < vec_bg_execution->length; i++) {
+            BgExecution* bg_execution = vec_bg_execution->_arr[i];
+            if (bg_execution->pgid == *pgid) {
+                killpg(pgid, SIGTERM);
+                bg_execution = vec_bg_execution->take(vec_bg_execution, i);
+                bg_execution->drop(bg_execution);
+                break;
+            }
+         }
+    }
+}
+
+void end_bg_execution() {
+    if (vec_bg_execution->length) {
+        clear_bg_execution(NULL);
+    }
+    vec_bg_execution->drop(vec_bg_execution);
+}
+
 int children_in_bg = 0;
 pid_t child_pgid = 0;
 
@@ -22,6 +118,7 @@ void sig_chld_handler(const int signal) {
             printf("[%d] %d Done\n", children_in_bg, child_that_finished);
             children_in_bg -= 1;
         }
+        clear_child_execution(child_that_finished);
     }
 }
 
@@ -144,6 +241,7 @@ void piped_cmd_handler(ShellState *state, CallGroup *call_group,
     pid_t child_pgid = 0;
     int pipes_len = exec_amount - 1;
     int pipes[pipes_len][2];
+    Vec* vec_child_pids = new_vec(sizeof(pid_t));
     for (i = 0; i < pipes_len; i++) {
         if (pipe(pipes[i]) < 0) {
             perror("pipe failed!\n");
@@ -161,6 +259,7 @@ void piped_cmd_handler(ShellState *state, CallGroup *call_group,
             child_pgid = child_pid ? child_pid : getpid();
         }
         if (child_pid) {
+            vec_child_pids->push(vec_child_pids, child_pid);
             setpgid(child_pid, child_pgid);
         } else {
             if (i < exec_amount - 1) {
@@ -187,6 +286,7 @@ void piped_cmd_handler(ShellState *state, CallGroup *call_group,
         }
     }
     if (i == exec_amount) {
+        vec_bg_execution->push(vec_bg_execution, new_bg_execution(child_pgid, vec_child_pids));
         int j;
         // Closing opened and unused pipes from the parent
         for (j = 0; j < pipes_len; j++) {
@@ -194,6 +294,7 @@ void piped_cmd_handler(ShellState *state, CallGroup *call_group,
             close(pipes[j][0]);
         }
         while (waitpid(-child_pgid, NULL, WUNTRACED) != -1);
+        clear_child_execution(child_pgid);
     }
 }
 

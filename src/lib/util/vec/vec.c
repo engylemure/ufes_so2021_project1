@@ -18,6 +18,7 @@ Vec *new_vec_with_size(uint64 elem_size, uint64 capacity) {
     vec->length = 0;
     vec->drop = vec_drop;
     vec->get = vec_get;
+    vec->take = vec_take;
     vec->push = vec_push;
     vec->pop = vec_pop;
     vec->pop_first = vec_pop_first;
@@ -103,6 +104,20 @@ void vec_print(Vec *vec, char *(*fmt_elem)(void *)) {
         free(str);
     }
     printf("]\n");
+}
+
+void* vec_take(Vec *vec, uint64 idx) {
+    if (idx < vec->length) {
+        void* elem = vec->_arr[idx];
+        int i;
+        for (i = idx; i < vec->length - 1; i++) {
+            vec->_arr[i] = vec->_arr[i+1];
+        }
+        vec->_arr[i] = NULL;
+        vec->length -= 1;
+        return elem;
+    } 
+    return NULL;
 }
 
 void **vec_take_arr(Vec *vec) {

@@ -6,6 +6,7 @@
 #include "lib/lib.h"
 
 int main(void) {
+    start_bg_execution();
     char *debug_env = getenv("DEBUG");
     debug_lib(debug_env != NULL &&
               (str_equals(debug_env, "true") || str_equals(debug_env, "1")));
@@ -50,5 +51,6 @@ int main(void) {
         }
     }
     state->drop(state);
+    end_bg_execution();
     return status_code;
 }

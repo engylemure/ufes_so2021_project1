@@ -17,7 +17,7 @@ typedef struct vec {
     void (*push)(struct vec *, void *);
 
     void *(*get)(struct vec *, uint64);
-
+    void *(*take)(struct vec*, uint64);
     void (*drop)(struct vec *);
 
     void *(*pop)(struct vec *);
@@ -36,6 +36,7 @@ Vec *new_vec(uint64 elem_size);
 void vec_push(Vec *vec, void *elem);
 
 void *vec_get(Vec *vec, uint64 idx);
+void* vec_take(Vec *vec, uint64 idx);
 
 void vec_drop(Vec *vec);
 
