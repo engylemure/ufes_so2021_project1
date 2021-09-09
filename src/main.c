@@ -22,7 +22,7 @@ int main(void) {
     int status_code = 0;
     while (should_continue) {
         create_input_thread(state);
-        char* shell_input = join_input_thread();
+        char *shell_input = join_input_thread();
         if (shell_input != NULL) {
             CallGroups *call_groups = call_groups_from_input(shell_input);
             int i;
@@ -30,17 +30,15 @@ int main(void) {
                 CallGroup *call_group = call_groups->groups[i];
                 switch (call_group->type) {
                     case Basic:
-                        if (call_group->exec_amount)
-                            basic_cmd_handler(state, call_group->exec_arr[0], true,
-                                              &should_continue, &status_code, call_group->is_background);
-                        break;
+                        basic_cmd_handler(state, call_group, &should_continue,
+                                          &status_code);
                         break;
                     case Sequential:
                         sequential_cmd_handler(state, call_group, &should_continue,
-                                               &status_code, call_group->is_background);
+                                               &status_code);
                         break;
                     case Piped:
-                        piped_cmd_handler(state, call_group, &should_continue, &status_code, call_group->is_background);
+                        piped_cmd_handler(state, call_group, &should_continue, &status_code);
                         break;
                     default:
                         break;

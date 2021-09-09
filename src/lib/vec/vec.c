@@ -1,8 +1,8 @@
 #include "vec.h"
 
-const int MAX_VEC_ELEM_SIZE = sizeof(void*);
+const int MAX_VEC_ELEM_SIZE = sizeof(void *);
 
-Vec *new_vec_with_size(uint64 elem_size, uint64 capacity) {
+Vec *new_vec_with_capacity(uint64 elem_size, uint64 capacity) {
     if (elem_size == 0) {
         perror("You shouldn't use vec with elements without size!\n");
         exit(1);
@@ -21,14 +21,17 @@ Vec *new_vec_with_size(uint64 elem_size, uint64 capacity) {
     vec->take = vec_take;
     vec->push = vec_push;
     vec->pop = vec_pop;
-    vec->pop_first = vec_pop_first;
+    vec->shift = vec_shift;
     vec->print = vec_print;
+    vec->fmt = vec_fmt;
+    vec->first = vec_first;
+    vec->last = vec_last;
     vec->take_arr = vec_take_arr;
     return vec;
 }
 
 Vec *new_vec(uint64 elem_size) {
-    return new_vec_with_size(elem_size, INITIAL_VEC_CAPACITY);
+    return new_vec_with_capacity(elem_size, INITIAL_VEC_CAPACITY);
 }
 
 void resize_vec(Vec *vec) {
@@ -79,7 +82,7 @@ void *vec_pop(Vec *vec) {
     return NULL;
 }
 
-void *vec_pop_first(Vec *vec) {
+void *vec_shift(Vec *vec) {
     if (vec->length) {
         void *elem = vec->_arr[0];
         int i;
@@ -92,32 +95,58 @@ void *vec_pop_first(Vec *vec) {
     return NULL;
 }
 
-void vec_print(Vec *vec, char *(*fmt_elem)(void *)) {
-    printf("[");
+char *array_fmt(uint64 size, void **array, char *(*fmt_elem)(void *) ) {
+    uint64 str_length = 2;
+    char **elems_str = malloc(sizeof(char *) * size);
     int i;
-    for (i = 0; i < vec->length; i++) {
-        char *str = fmt_elem(vec->_arr[i]);
-        printf("%s", str);
-        if (i != vec->length - 1) {
-            printf(", ");
-        }
-        free(str);
+    for (i = 0; i < size; i++) {
+        char *elem_str = fmt_elem(array[i]);
+        elems_str[i] = elem_str;
+        str_length += strlen(elem_str) + 2;
     }
-    printf("]\n");
+    char *str = malloc(sizeof(char) * (str_length + 1));
+    str[0] = '[';
+    str[1] = '\0';
+    for (i = 0; i < size; i++) {
+        strcat(str, elems_str[i]);
+        free(elems_str[i]);
+        if (i < size - 1)
+            strcat(str, ", ");
+    }
+    strcat(str, "]");
+    free(elems_str);
+    return str;
 }
 
-void* vec_take(Vec *vec, uint64 idx) {
+char *vec_fmt(Vec *vec, char *(*fmt_elem)(void *) ) {
+    return array_fmt(vec->length, vec->_arr, fmt_elem);
+}
+
+void vec_print(Vec *vec, char *(*fmt_elem)(void *) ) {
+    char *str = vec_fmt(vec, fmt_elem);
+    printf("%s\n", str);
+    free(str);
+}
+
+void *vec_take(Vec *vec, uint64 idx) {
     if (idx < vec->length) {
-        void* elem = vec->_arr[idx];
-        int i;
-        for (i = idx; i < vec->length - 1; i++) {
-            vec->_arr[i] = vec->_arr[i+1];
+        void *elem = vec->_arr[idx];
+        int i = idx;
+        for (; i < vec->length - 1; i++) {
+            vec->_arr[i] = vec->_arr[i + 1];
         }
         vec->_arr[i] = NULL;
         vec->length -= 1;
         return elem;
-    } 
+    }
     return NULL;
+}
+
+void *vec_first(Vec *vec) {
+    return vec->length ? vec->_arr[0] : NULL;
+}
+void *vec_last(Vec *vec) {
+    return vec->length ? vec->_arr[vec->length - 1] : NULL;
 }
 
 void **vec_take_arr(Vec *vec) {

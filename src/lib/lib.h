@@ -1,11 +1,12 @@
 #ifndef VSH_NEW_LIB_H
 #define VSH_NEW_LIB_H
 
-#include "util/vec/vec.h"
+#include "vec/vec.h"
 #include <stdbool.h>
 #include <sys/types.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdint.h>
 
 /*
  * error codes
@@ -22,7 +23,7 @@ Vec *new_vec_string();
 char *fmt_string(void *);
 void debug_lib(bool);
 #define str_equals(self, other) strcmp(self, other) == 0
-
+#define ptr_to_type(type) (type)(uintptr_t)
 /*
  * CallType
  * description: enum to describe the possible types of a call into the shell
@@ -69,6 +70,8 @@ void shell_state_change_cwd(char *);
 char *shell_state_simple_cwd();
 
 void shell_state_drop(ShellState *);
+
+#define MAX_SHELL_INPUT 8192
 char *shell_state_prompt_user();
 
 /*
@@ -78,6 +81,8 @@ char *shell_state_prompt_user();
 enum ShellBehavior {
     Continue,
     Exit,
+    ClearBackground,
+    ClearBackgroundAndExit,
     Cd,
     UnknownCommand = 99
 };
@@ -121,7 +126,7 @@ typedef struct execArgs {
     void (*drop)(struct execArgs *);
     char *(*fmt)(struct execArgs *);
     void (*print)(struct execArgs *);
-    CallResult *(*call)(struct execArgs *, bool, bool);
+    CallResult *(*call)(struct execArgs *, bool, bool, bool);
 } ExecArgs;
 
 ExecArgs *new_exec_args(unsigned int, char **);
@@ -129,7 +134,7 @@ ExecArgs *new_exec_args_from_vec_str(Vec*);
 void exec_args_drop(ExecArgs *);
 char *exec_args_fmt(ExecArgs *);
 void exec_args_print(ExecArgs *);
-CallResult *exec_args_call(struct execArgs *, bool, bool);
+CallResult *exec_args_call(struct execArgs *, bool, bool, bool);
 Vec *new_vec_exec_args();
 
 /*

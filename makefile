@@ -1,3 +1,4 @@
+# author: Jordao Rodrigues Oliveira Rosario <engylemure>
 COMPILER = clang
 #  Directory for binary file
 TARGET_PATH = target
@@ -28,6 +29,10 @@ ifeq (, $(shell which $(COMPILER)))
 endif
 
 ifeq ($(ENV), "release")
+	OPTIMISATION_ARG = -O3
+endif
+
+ifeq ($(ENV), "prod")
 	OPTIMISATION_ARG = -O3
 endif
 

@@ -1,8 +1,7 @@
 #include "lib.h"
-#include "util/vec/vec.h"
+#include "vec/vec.h"
 #include <dirent.h>
 #include <pwd.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -76,10 +75,10 @@ void shell_state_change_cwd(char *new_dir) {
     }
     closedir(dir);
 }
- 
+
 // function to simplify the presentation of the working directory
-// hiding the home directory under the '~' and any directory that 
-// would be 2 directories above using the '...' 
+// hiding the home directory under the '~' and any directory that
+// would be 2 directories above using the '...'
 char *shell_state_simple_cwd() {
     char *cwd = shell_state_cwd();
     char *home = shell_state_home();
@@ -107,12 +106,12 @@ char *shell_state_simple_cwd() {
     unsigned int cwd_simplified_len = strlen(last_last_ptr) + (cwd_has_home ? 3 : 1) + (large_dir ? 3 : 0);
     cwd_simplified = malloc(sizeof(char) * cwd_simplified_len);
     cwd_simplified[0] = '\0';
-    // adding the ~ to inform the user that he is under the home directory
+    // adding the '~' to inform the user that he is under the home directory
     if (cwd_has_home) {
         strcat(cwd_simplified, "~");
     }
-    // adding the ~ to inform the user that he has more than 2 directories
-    // above the presented directory
+    // adding the '/...' to inform the user that he has more than 2 directories
+    // above the presented directories
     if (large_dir) {
         strcat(cwd_simplified, "/...");
     }
@@ -133,20 +132,20 @@ const char EndAnsi[] = "\033[0m";
 const char RedAnsi[] = "\033[91m";
 const char YellowAnsi[] = "\033[93m";
 
-// function used to prompt the user, returning the string provided by the user we
-// are allowing the user to provide a input with a maximum value of PATH_MAX
+// function used to prompt the user into our shell, returning the string provided by the user
+// that should have a max length of MAX_SHELL_INPUT value
 char *shell_state_prompt_user(ShellState *state) {
     if (state != NULL) {
-        char *input = malloc(sizeof(char) * PATH_MAX);
-        fflush(stdout);
+        char input[MAX_SHELL_INPUT];
         char *pwd = state->simple_cwd();
+        fflush(stdout);
         printf("%s%s > %s%svsh%s%s > %s", BlueAnsi, pwd, EndAnsi, JojoAnsi, EndAnsi,
                BlueAnsi, EndAnsi);
         free(pwd);
         fflush(stdin);
-        fgets(input, PATH_MAX, stdin);
+        fgets(input, MAX_SHELL_INPUT, stdin);
         input[strcspn(input, "\n")] = '\0';
-        return input;
+        return strdup(input);
     } else {
         perror("provided ShellState is NULL\n");
         exit(1);
@@ -183,6 +182,7 @@ ExecArgs *new_exec_args(unsigned int argc, char **argv) {
     return self;
 }
 
+// Function that creates a ExecArgs* object from an array of strings
 ExecArgs *new_exec_args_from_vec_str(Vec *vec) {
     int argc = vec->length;
     char **argv = malloc(sizeof(char *) * (argc + 1));
@@ -214,24 +214,12 @@ void exec_args_drop(ExecArgs *self) {
 }
 
 char *exec_args_fmt(ExecArgs *data) {
-    ExecArgs *exec_args = data;
-    uint64 argv_len = 15;
-    int i;
-    for (i = 0; i < exec_args->argc; i++) {
-        argv_len += strlen(exec_args->argv[i]) + 1;
-    }
-    char *argv = malloc(sizeof(char) * argv_len);
-    argv[0] = '[';
-    argv[1] = '\0';
-    for (i = 0; i < exec_args->argc; i++) {
-        char *formatted_call = fmt_string(exec_args->argv[i]);
-        strcat(argv, formatted_call);
-        free(formatted_call);
-        if (i != exec_args->argc - 1)
-            strcat(argv, ",");
-    }
-    strcat(argv, "]");
-    return argv;
+    char *argv_str = array_fmt(data->argc, data->argv, fmt_string);
+    unsigned int str_len = strlen(argv_str);
+    char *str = malloc(sizeof(char) * (str_len + 40));
+    sprintf(str, "ExecArgs { argc: %d, argv: %s }", data->argc, argv_str);
+    free(argv_str);
+    return str;
 }
 
 void exec_args_print(ExecArgs *self) {
@@ -240,26 +228,49 @@ void exec_args_print(ExecArgs *self) {
     free(str);
 }
 
-CallResult *exec_args_call(struct execArgs *exec_args, bool should_fork, bool should_wait) {
+// function to abstract the execution of the command that is stored into the ExecArgs* struct
+// it allow us to specify if we should fork the actual process into a new one or if we should
+// wait for the end of it's execution, it also return the result of it's execution
+// this has the objective of only handling external execution call and identification of internal ones.
+CallResult *exec_args_call(ExecArgs *exec_args, bool should_fork, bool should_wait, bool is_session_leader) {
     enum ShellBehavior shell_behavior = UnknownCommand;
     char *program_name = NULL;
     bool is_parent = true;
     pid_t child_pid = 0;
+    // We are considering that an empty ExecArgs* should have a ShellBehavior
+    // of continuing it's execution
     if (exec_args->argc == 0) {
         shell_behavior = Continue;
     } else {
         program_name = exec_args->argv[0];
+        // Over here since I've tried to mimic the basic behavior of a shell I've kept
+        // exit as one of the command's used to exit it's execution but as the project require's
+        // that we use the "armageddon" as an internal operation as well I've also used it
         if (str_equals(program_name, "exit")) {
             shell_behavior = Exit;
+        } else if (str_equals(program_name, "armageddon")) {
+            shell_behavior = ClearBackgroundAndExit;
+        } else if (str_equals(program_name, "liberamoita")) {
+            // identification of "liberamoita" operation
+            shell_behavior = ClearBackground;
         } else if (str_equals(program_name, "cd")) {
+            // Over here we are also adding the identification of the internal operation "cd"
+            // that has the objective of changing the working directory of the shell
             shell_behavior = Cd;
         } else {
+            // Since the program_name isn't equal to it's internal operation
+            // we are handling over here execution of it using some of the params
+            // to control it's behavior, if we should_fork we fork it and check it's return
+            // value other wise we set the child_pid as 0 that would be the same value returned
+            // for the child of the fork execution.
             child_pid = should_fork ? fork() : 0;
             if (child_pid == -1) {
                 perror("'fork' failed!\n");
                 exit(ForkFailed);
             } else if (child_pid) {
+                // On the parent we define the shell behavior as continue
                 shell_behavior = Continue;
+                // and wait if necessary
                 if (should_wait) {
                     int wait_status;
                     waitpid(child_pid, &wait_status, WUNTRACED);
@@ -268,9 +279,16 @@ CallResult *exec_args_call(struct execArgs *exec_args, bool should_fork, bool sh
                     }
 
                     if (WIFSTOPPED(wait_status)) {
+                        // since the project didn't require that we handle the
+                        // case of stopping the child execution we are ignoring it for now.
                     }
                 }
             } else {
+                if (is_session_leader) {
+                    setsid();
+                }
+                // we try to execute the program with the provided arguments
+                // and otherwise we try to alert the user that the program was not found
                 execvp(program_name, exec_args->argv);
                 is_parent = false;
             }
@@ -286,8 +304,8 @@ CallResult *exec_args_call(struct execArgs *exec_args, bool should_fork, bool sh
                 char *home_env = shell_state_home();
                 unsigned int home_len = strlen(home_env);
                 unsigned int aux_str_len = home_len + strlen((exec_args->argv[1]));
-                aux_str = malloc(sizeof(char)*aux_str_len);
-                sprintf(aux_str, "%s%s", home_env, (exec_args->argv[1]+1));
+                aux_str = malloc(sizeof(char) * aux_str_len);
+                sprintf(aux_str, "%s%s", home_env, (exec_args->argv[1] + 1));
                 free(home_env);
             } else {
                 aux_str = strdup(exec_args->argv[1]);
@@ -322,21 +340,7 @@ CallGroup *new_call_group(Vec *vec_exec_args, enum CallType type, bool is_backgr
 
 char *call_group_fmt(CallGroup *self) {
     int i;
-    char *exec_args_str_arr[self->exec_amount];
-    int exec_args_str_len = 3;
-    for (i = 0; i < self->exec_amount; i++) {
-        char *exec_arg = exec_args_fmt(self->exec_arr[i]);
-        exec_args_str_arr[i] = exec_arg;
-        exec_args_str_len += strlen(exec_arg) + 2;
-    }
-    char exec_args_str[(exec_args_str_len + 1)];
-    exec_args_str[0] = '[';
-    exec_args_str[1] = '\0';
-    for (i = 0; i < self->exec_amount; i++) {
-        strcat(exec_args_str, exec_args_str_arr[i]);
-        free(exec_args_str_arr[i]);
-        strcat(exec_args_str, i != self->exec_amount - 1 ? ", " : "]");
-    }
+    char *exec_args_str = array_fmt(self->exec_amount, self->exec_arr, exec_args_fmt);
     char *call_group_type;
     switch (self->type) {
         case Basic:
@@ -349,13 +353,14 @@ char *call_group_fmt(CallGroup *self) {
             call_group_type = "Sequential";
             break;
     }
-    char *str = malloc(sizeof(char) * (exec_args_str_len + 100));
+    char *str = malloc(sizeof(char) * (strlen(exec_args_str) + 100));
     sprintf(str, "CallGroup { exec_amount: %d, type: %s, is_background: %s, file_name: %s, exec_arr: %s }", self->exec_amount, call_group_type, bool_str(self->is_background), self->file_name, exec_args_str);
+    free(exec_args_str);
     return str;
 }
 
 void call_group_print(CallGroup *self) {
-    char* str = self->fmt(self);
+    char *str = self->fmt(self);
     printf("%s", str);
     free(str);
 }
@@ -376,14 +381,14 @@ void call_group_drop(CallGroup *self) {
 
 Vec *new_vec_call_group() { return new_vec(sizeof(CallGroup *)); }
 
-CallGroups *new_call_groups(Vec* vec_call_group, bool has_parsing_err) {
+CallGroups *new_call_groups(Vec *vec_call_group, bool has_parsing_err) {
     CallGroups *self = malloc(sizeof(CallGroups));
     self->drop = call_groups_drop;
     self->fmt = call_groups_fmt;
     self->print = call_groups_print;
     self->len = has_parsing_err || vec_call_group == NULL ? 0 : vec_call_group->length;
     if (self->len) {
-         self->groups = malloc(sizeof(CallGroup**)*self->len);
+        self->groups = malloc(sizeof(CallGroup **) * self->len);
         int i;
         for (i = 0; i < self->len; i++) {
             self->groups[i] = vec_call_group->get(vec_call_group, i);
@@ -391,7 +396,7 @@ CallGroups *new_call_groups(Vec* vec_call_group, bool has_parsing_err) {
     } else {
         self->groups = NULL;
     }
-    
+
     self->has_parsing_error = has_parsing_err;
     return self;
 }
@@ -401,7 +406,7 @@ void call_group_specific_type(enum CallType expected_type, enum CallType *type,
                               Vec **vec_exec_args, bool *is_background) {
     ExecArgs *exec_arg = new_exec_args_from_vec_str(*vec_str);
     *vec_str = new_vec_string();
-    if (*type == Basic || *type == expected_type) {
+    if ((*type == Basic || *type == expected_type) && !*is_background) {
         *type = expected_type;
         (*vec_exec_args)->push(*vec_exec_args, exec_arg);
     } else {
@@ -491,31 +496,10 @@ void call_groups_drop(CallGroups *self) {
 
 char *call_groups_fmt(CallGroups *self) {
     unsigned int str_len = 58;
-    unsigned int c_group_str_len = 2;
-    char *c_group_str_array[self->len];
-    if (self->len && self->groups != NULL) {
-        int i;
-        for (i = 0; i < self->len; i++) {
-            CallGroup *call_group = self->groups[i];
-            char *c_group_str = call_group->fmt(call_group);
-            c_group_str_array[i] = c_group_str;
-            c_group_str_len += strlen(c_group_str) + 2;
-        }
-    }
-    char c_group_str[(c_group_str_len + 1)];
-    c_group_str[0] = '[';
-    c_group_str[1] = '\0';
-    if (self->len) {
-        int i;
-        for (i = 0; i < self->len; i++) {
-            strcat(c_group_str, c_group_str_array[i]);
-            strcat(c_group_str, i != self->len - 1 ? ", " : "]");
-            free(c_group_str_array[i]);
-        }
-    }
+    char *c_group_str = array_fmt(self->len, self->groups, call_group_fmt);
     char *str = malloc(sizeof(char) * (strlen(c_group_str) + str_len));
     sprintf(str, "CallGroups { len: %d, has_parsing_error: %s, groups: %s }", self->len, bool_str(self->has_parsing_error), c_group_str);
-    int i;
+    free(c_group_str);
     return str;
 }
 
@@ -593,7 +577,7 @@ Vec *vec_parse_arg_res_from_shell_input(char *shell_input) {
             } break;
             case '"':
                 if (char_buffer->length &&
-                    (char) (uintptr_t) char_buffer->get(char_buffer, char_buffer->length - 1) == '\\') {
+                    ptr_to_type(char) char_buffer->get(char_buffer, char_buffer->length - 1) == '\\') {
                     char_buffer->pop(char_buffer);
                     push_in_buffer(char_buffer, c);
                 } else {

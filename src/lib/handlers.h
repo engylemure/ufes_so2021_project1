@@ -50,17 +50,20 @@ void sig_usr_handler(int signal);
 /*
  * Commands handlers
  */
-pid_t basic_cmd_handler(ShellState *state, ExecArgs *exec_args,
-                        bool should_wait, bool *should_continue,
-                        int *status_code, bool is_background);
+#define CMD_HND_OPT_FORK 1
+#define CMD_HND_OPT_BG 2
+#define CMD_HND_OPT_LEADER 4
+pid_t basic_cmd_handler(ShellState *state, CallGroup *call_group,
+                        bool *should_continue, int *status_code);
+pid_t cmd_handler(ShellState *state, ExecArgs *exec_args, bool *should_continue, int *status_code, unsigned int opts);
 
 void unknown_cmd_info(CallResult *res, bool *should_continue,
                       int *status_code);
 
 void sequential_cmd_handler(ShellState *state, CallGroup *call_group,
-                            bool *should_continue, int *status_code, bool is_background);
+                            bool *should_continue, int *status_code);
 
 void piped_cmd_handler(ShellState *state, CallGroup *call_group,
-                       bool *should_continue, int *status_code, bool is_background);
+                       bool *should_continue, int *status_code);
 
 #endif
