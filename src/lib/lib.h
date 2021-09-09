@@ -22,6 +22,7 @@ enum ErrorCodes {
 Vec *new_vec_string();
 char *fmt_string(void *);
 void debug_lib(bool);
+bool is_debug();
 #define str_equals(self, other) strcmp(self, other) == 0
 #define ptr_to_type(type) (type)(uintptr_t)
 /*

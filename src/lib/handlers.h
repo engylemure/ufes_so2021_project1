@@ -18,13 +18,18 @@ void create_input_thread(ShellState *state);
 
 char *join_input_thread();
 
-/*
- *
- *
+/**
+ * BgExecution
+ * description: struct to store and more easily
+ * handle with the background execution of processes
+ * we can use a vector of child_pids to control it's execution
+ * or the child_amount with the pgid considering that all children
+ * would be at the same session and process group
  */
 typedef struct bgExecution {
     pid_t pgid;
     Vec* child_pids;
+    unsigned int child_amount;
     void (*drop)(struct bgExecution*);
     bool (*clear_child)(struct bgExecution*, pid_t);
     void (*print)(struct bgExecution*);
@@ -62,7 +67,6 @@ void unknown_cmd_info(CallResult *res, bool *should_continue,
 
 void sequential_cmd_handler(ShellState *state, CallGroup *call_group,
                             bool *should_continue, int *status_code);
-
 void piped_cmd_handler(ShellState *state, CallGroup *call_group,
                        bool *should_continue, int *status_code);
 

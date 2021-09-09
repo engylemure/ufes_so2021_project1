@@ -26,6 +26,10 @@ Vec *new_vec_string() { return new_vec(sizeof(char *)); }
 
 bool DEBUG_IS_ON = false;
 
+bool is_debug() {
+    return DEBUG_IS_ON;
+}
+
 // function to debug or not this lib
 void debug_lib(bool should_debug) {
     if (should_debug) {

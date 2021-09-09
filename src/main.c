@@ -5,6 +5,7 @@
 #include "lib/handlers.h"
 #include "lib/lib.h"
 
+
 int main(void) {
     start_bg_execution();
     char *debug_env = getenv("DEBUG");
