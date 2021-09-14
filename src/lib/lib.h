@@ -104,7 +104,6 @@ typedef struct callResult {
     char *additional_data;
     bool is_parent;
     pid_t child_pid;
-    void (*drop)(struct callResult *);
 } CallResult;
 
 CallResult *new_call_result(enum ShellBehavior, char *, bool, pid_t);
@@ -124,10 +123,6 @@ void call_result_drop(CallResult *);
 typedef struct execArgs {
     unsigned int argc;
     char **argv;
-    void (*drop)(struct execArgs *);
-    char *(*fmt)(struct execArgs *);
-    void (*print)(struct execArgs *);
-    CallResult *(*call)(struct execArgs *, bool, bool, bool);
 } ExecArgs;
 
 ExecArgs *new_exec_args(unsigned int, char **);
@@ -154,9 +149,6 @@ typedef struct callGroup {
     bool is_background;
     char *file_name;
     ExecArgs **exec_arr;
-    void (*drop)(struct callGroup *);
-    char *(*fmt)(struct callGroup *);
-    void (*print)(struct callGroup *);
 } CallGroup;
 
 CallGroup *new_call_group(Vec*, enum CallType, bool);
@@ -177,9 +169,6 @@ typedef struct callGroups {
     bool has_parsing_error;
     int len;
     CallGroup **groups;
-    char *(*fmt)(struct callGroups *);
-    void (*print)(struct callGroups *);
-    void (*drop)(struct callGroups *);
 } CallGroups;
 
 CallGroups *new_call_groups(Vec*, bool);
@@ -217,10 +206,6 @@ enum ArgType {
 typedef struct parseArgRes {
     char *arg;
     enum ArgType type;
-    void (*drop)(struct parseArgRes *);
-    char *(*take_arg)(struct parseArgRes *);
-    char *(*fmt)(struct parseArgRes*);
-    void (*print)(struct parseArgRes*);
 } ParseArgRes;
 
 // Function that describe the parsing of the shell input string

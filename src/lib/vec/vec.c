@@ -16,17 +16,6 @@ Vec *new_vec_with_capacity(uint64 elem_size, uint64 capacity) {
     vec->_elem_size = elem_size;
     vec->_capacity = capacity;
     vec->length = 0;
-    vec->drop = vec_drop;
-    vec->get = vec_get;
-    vec->take = vec_take;
-    vec->push = vec_push;
-    vec->pop = vec_pop;
-    vec->shift = vec_shift;
-    vec->print = vec_print;
-    vec->fmt = vec_fmt;
-    vec->first = vec_first;
-    vec->last = vec_last;
-    vec->take_arr = vec_take_arr;
     return vec;
 }
 

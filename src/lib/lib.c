@@ -162,7 +162,6 @@ CallResult *new_call_result(enum ShellBehavior s_behavior, char *additional_data
     self->additional_data = additional_data;
     self->is_parent = is_parent;
     self->child_pid = child_pid;
-    self->drop = call_result_drop;
     return self;
 }
 
@@ -179,10 +178,6 @@ ExecArgs *new_exec_args(unsigned int argc, char **argv) {
     ExecArgs *self = malloc(sizeof(ExecArgs));
     self->argc = argc;
     self->argv = argv;
-    self->drop = exec_args_drop;
-    self->fmt = exec_args_fmt;
-    self->print = exec_args_print;
-    self->call = exec_args_call;
     return self;
 }
 
@@ -192,13 +187,13 @@ ExecArgs *new_exec_args_from_vec_str(Vec *vec) {
     char **argv = malloc(sizeof(char *) * (argc + 1));
     int i, j;
     for (i = 0, j = 0; i < argc; i++) {
-        char *str = vec->get(vec, i);
+        char *str = vec_get(vec, i);
         if (strlen(str)) {
             argv[j++] = str;
         }
     }
     argv[j] = NULL;
-    vec->drop(vec);
+    vec_drop(vec);
     return new_exec_args(argc, argv);
 }
 
@@ -227,7 +222,7 @@ char *exec_args_fmt(ExecArgs *data) {
 }
 
 void exec_args_print(ExecArgs *self) {
-    char *str = self->fmt(self);
+    char *str = exec_args_fmt(self);
     printf("%s", str);
     free(str);
 }
@@ -330,13 +325,12 @@ CallGroup *new_call_group(Vec *vec_exec_args, enum CallType type, bool is_backgr
     ExecArgs **exec_arr = malloc(sizeof(ExecArgs *) * count);
     int i;
     for (i = 0; i < count; i++) {
-        exec_arr[i] = vec_exec_args->get(vec_exec_args, i);
+        exec_arr[i] = vec_get(vec_exec_args, i);
     }
-    vec_exec_args->drop(vec_exec_args);
+    vec_drop(vec_exec_args);
     self->type = type;
     self->exec_amount = count;
     self->exec_arr = exec_arr;
-    self->drop = call_group_drop;
     self->file_name = NULL;
     self->is_background = is_background;
     return self;
@@ -364,7 +358,7 @@ char *call_group_fmt(CallGroup *self) {
 }
 
 void call_group_print(CallGroup *self) {
-    char *str = self->fmt(self);
+    char *str = call_group_fmt(self);
     printf("%s", str);
     free(str);
 }
@@ -372,7 +366,7 @@ void call_group_print(CallGroup *self) {
 void call_group_drop(CallGroup *self) {
     int i;
     for (i = 0; i < self->exec_amount; i++) {
-        self->exec_arr[i]->drop(self->exec_arr[i]);
+        exec_args_drop(self->exec_arr[i]);
     }
     free(self->exec_arr);
     self->exec_arr = NULL;
@@ -387,15 +381,12 @@ Vec *new_vec_call_group() { return new_vec(sizeof(CallGroup *)); }
 
 CallGroups *new_call_groups(Vec *vec_call_group, bool has_parsing_err) {
     CallGroups *self = malloc(sizeof(CallGroups));
-    self->drop = call_groups_drop;
-    self->fmt = call_groups_fmt;
-    self->print = call_groups_print;
     self->len = has_parsing_err || vec_call_group == NULL ? 0 : vec_call_group->length;
     if (self->len) {
         self->groups = malloc(sizeof(CallGroup **) * self->len);
         int i;
         for (i = 0; i < self->len; i++) {
-            self->groups[i] = vec_call_group->get(vec_call_group, i);
+            self->groups[i] = vec_get(vec_call_group, i);
         }
     } else {
         self->groups = NULL;
@@ -412,10 +403,10 @@ void call_group_specific_type(enum CallType expected_type, enum CallType *type,
     *vec_str = new_vec_string();
     if ((*type == Basic || *type == expected_type) && !*is_background) {
         *type = expected_type;
-        (*vec_exec_args)->push(*vec_exec_args, exec_arg);
+       vec_push(*vec_exec_args, exec_arg);
     } else {
-        (*vec_exec_args)->push(*vec_exec_args, exec_arg);
-        vec_call_group->push(vec_call_group,
+        vec_push(*vec_exec_args, exec_arg);
+        vec_push(vec_call_group,
                              new_call_group(*vec_exec_args, *type, *is_background));
         *vec_exec_args = new_vec_exec_args();
         *type = Basic;
@@ -432,11 +423,11 @@ CallGroups *call_groups_from_input(char *input) {
         enum CallType type = Basic;
         bool is_background = false;
         int len = args->length;
-        ParseArgRes **args_res = (ParseArgRes **) args->take_arr(args);
+        ParseArgRes **args_res = (ParseArgRes **) vec_take_arr(args);
         int i;
         for (i = 0; i < len; i++) {
             ParseArgRes *parse_arg_res = args_res[i];
-            char *str = parse_arg_res->take_arg(parse_arg_res);
+            char *str = parse_arg_res_take_arg(parse_arg_res);
             if (strlen(str) > 2 && str[0] == '$') {
                 char *env_value = strdup(getenv(str + 1));
                 free(str);
@@ -461,23 +452,23 @@ CallGroups *call_groups_from_input(char *input) {
                     break;
                 case Simple:
                 default:
-                    vec_string->push(vec_string, str);
+                    vec_push(vec_string, str);
                     break;
             }
-            parse_arg_res->drop(parse_arg_res);
+            parse_arg_res_drop(parse_arg_res);
         }
         free(args_res);
         if (vec_string->length) {
-            vec_exec_args->push(vec_exec_args, new_exec_args_from_vec_str(vec_string));
+            vec_push(vec_exec_args, new_exec_args_from_vec_str(vec_string));
         } else {
-            vec_string->drop(vec_string);
+            vec_drop(vec_string);
         }
-        vec_call_group->push(vec_call_group,
+        vec_push(vec_call_group,
                              new_call_group(vec_exec_args, type, is_background));
         if (DEBUG_IS_ON)
-            vec_call_group->print(vec_call_group, call_group_fmt);
+           vec_print(vec_call_group, call_group_fmt);
         CallGroups *val = new_call_groups(vec_call_group, false);
-        vec_call_group->drop(vec_call_group);
+        vec_drop(vec_call_group);
         return val;
     } else {
         return new_call_groups(NULL, true);
@@ -489,7 +480,7 @@ void call_groups_drop(CallGroups *self) {
         int i;
         for (i = 0; i < self->len; i++) {
             CallGroup *call_group = self->groups[i];
-            call_group->drop(call_group);
+            call_group_drop(call_group);
         }
         free(self->groups);
         self->groups = NULL;
@@ -508,7 +499,7 @@ char *call_groups_fmt(CallGroups *self) {
 }
 
 void call_groups_print(CallGroups *self) {
-    char *str = self->fmt(self);
+    char *str = call_groups_fmt(self);
     printf("%s", str);
     free(str);
 }
@@ -517,11 +508,10 @@ char *str_from_vec_char(Vec **vec, bool should_alloc) {
     char *str = malloc(sizeof(char) * ((*vec)->length + 1));
     int i;
     for (i = 0; i < (*vec)->length; i++) {
-        uintptr_t int_val = (uintptr_t) (*vec)->get(*vec, i);
-        str[i] = (char) int_val;
+        str[i] = (char) (uintptr_t) vec_get(*vec, i);
     }
     str[i] = '\0';
-    (*vec)->drop(*vec);
+    vec_drop(*vec);
     if (should_alloc) {
         *vec = new_vec(sizeof(char));
     }
@@ -549,7 +539,7 @@ Vec *vec_parse_arg_res_from_shell_input(char *shell_input) {
         i = str_len;
     }
     void (*push_in_buffer)(Vec * vec, char c) =
-            (void (*)(Vec *, char)) char_buffer->push;
+            (void (*)(Vec *, char)) vec_push;
     for (; i < str_len; i++) {
         c = shell_input[i];
         switch (c) {
@@ -559,13 +549,13 @@ Vec *vec_parse_arg_res_from_shell_input(char *shell_input) {
                 } else if (arg_parse_state == LeftQuote) {
                     push_in_buffer(char_buffer, c);
                 } else if (char_buffer->length) {
-                    args->push(args, new_parse_arg_res(
+                    vec_push(args, new_parse_arg_res(
                                              str_from_vec_char(&char_buffer, true), Simple));
                     arg_parse_state = Ignore;
                 };
                 break;
             case '|': {
-                args->push(args,
+                vec_push(args,
                            new_parse_arg_res(str_from_vec_char(&char_buffer, true), Bar));
                 arg_parse_state = Ignore;
             } break;
@@ -575,18 +565,18 @@ Vec *vec_parse_arg_res_from_shell_input(char *shell_input) {
                     type = DoubleAt;
                     i += 1;
                 }
-                args->push(
+                vec_push(
                         args, new_parse_arg_res(str_from_vec_char(&char_buffer, true), type));
                 arg_parse_state = Ignore;
             } break;
             case '"':
                 if (char_buffer->length &&
-                    ptr_to_type(char) char_buffer->get(char_buffer, char_buffer->length - 1) == '\\') {
-                    char_buffer->pop(char_buffer);
+                    ptr_to_type(char) vec_last(char_buffer) == '\\') {
+                    vec_pop(char_buffer);
                     push_in_buffer(char_buffer, c);
                 } else {
                     if (arg_parse_state == LeftQuote) {
-                        args->push(args, new_parse_arg_res(
+                        vec_push(args, new_parse_arg_res(
                                                  str_from_vec_char(&char_buffer, true), Quoted));
                         arg_parse_state = Ignore;
                     } else {
@@ -604,21 +594,21 @@ Vec *vec_parse_arg_res_from_shell_input(char *shell_input) {
     }
     if (char_buffer->length) {
         if (arg_parse_state == Word) {
-            args->push(args, new_parse_arg_res(str_from_vec_char(&char_buffer, false),
+            vec_push(args, new_parse_arg_res(str_from_vec_char(&char_buffer, false),
                                                Simple));
         } else {
-            char_buffer->drop(char_buffer);
+            vec_drop(char_buffer);
         }
         if (arg_parse_state == LeftQuote) {
             has_error = true;
         }
     } else {
-        char_buffer->drop(char_buffer);
+        vec_drop(char_buffer);
     }
     if (DEBUG_IS_ON)
-        args->print(args, parse_arg_res_fmt);
+        vec_print(args, parse_arg_res_fmt);
     if (has_error) {
-        args->drop(args);
+        vec_drop(args);
         return NULL;
     }
     return args;
@@ -628,10 +618,6 @@ ParseArgRes *new_parse_arg_res(char *arg, enum ArgType type) {
     ParseArgRes *self = malloc(sizeof(ParseArgRes));
     self->arg = arg;
     self->type = type;
-    self->drop = parse_arg_res_drop;
-    self->take_arg = parse_arg_res_take_arg;
-    self->fmt = parse_arg_res_fmt;
-    self->print = parse_arg_res_print;
     return self;
 }
 
@@ -673,7 +659,7 @@ char *parse_arg_res_fmt(ParseArgRes *self) {
 }
 
 void parse_arg_res_print(ParseArgRes *self) {
-    char *str = self->fmt(self);
+    char *str = parse_arg_res_fmt(self);
     printf("%s", str);
     free(str);
 }

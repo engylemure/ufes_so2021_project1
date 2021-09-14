@@ -7,6 +7,7 @@
 
 
 int main(void) {
+    setsid();
     start_bg_execution();
     char *debug_env = getenv("DEBUG");
     debug_lib(debug_env != NULL &&
@@ -45,7 +46,7 @@ int main(void) {
                         break;
                 }
             }
-            call_groups->drop(call_groups);
+            call_groups_drop(call_groups);
             free(shell_input);
         }
     }

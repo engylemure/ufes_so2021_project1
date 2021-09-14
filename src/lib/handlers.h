@@ -30,10 +30,6 @@ typedef struct bgExecution {
     pid_t pgid;
     Vec* child_pids;
     unsigned int child_amount;
-    void (*drop)(struct bgExecution*);
-    bool (*clear_child)(struct bgExecution*, pid_t);
-    void (*print)(struct bgExecution*);
-    char* (*fmt)(struct bgExecution*);
 } BgExecution;
 BgExecution* new_bg_execution(pid_t, Vec*);
 void bg_execution_drop(BgExecution*);

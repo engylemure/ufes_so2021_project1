@@ -11,10 +11,6 @@ BgExecution *new_bg_execution(pid_t pgid, Vec *child_pids) {
     val->child_pids = child_pids;
     val->pgid = pgid;
     val->child_amount = 0;
-    val->clear_child = bg_execution_clear_child;
-    val->drop = bg_execution_drop;
-    val->print = bg_execution_print;
-    val->fmt = bg_execution_fmt;
     return val;
 }
 
@@ -34,7 +30,7 @@ void bg_execution_print(BgExecution *self) {
 void bg_execution_drop(BgExecution *self) {
     if (self->child_pids != NULL) {
         Vec *child_pids = self->child_pids;
-        child_pids->drop(child_pids);
+        vec_drop(child_pids);
         self->child_pids = NULL;
     }
     free(self);
@@ -52,7 +48,7 @@ bool bg_execution_clear_child(BgExecution *self, pid_t child_pid) {
             for (i = 0; i < child_pids->length; i++) {
                 pid_t pid = ptr_to_type(pid_t) child_pids->_arr[i];
                 if (pid == child_pid) {
-                    child_pids->take(child_pids, i);
+                    vec_take(child_pids, i);
                     return true;
                 }
             }
@@ -80,18 +76,18 @@ void start_bg_execution() {
 // is complete
 bool clear_child_execution(pid_t child_pid) {
     if (is_debug()) {
-        vec_bg_execution->print(vec_bg_execution, bg_execution_fmt);
+        vec_print(vec_bg_execution, bg_execution_fmt);
     }
     if (vec_bg_execution->length) {
         int i;
         for (i = 0; i < vec_bg_execution->length; i++) {
             BgExecution *bg_execution = vec_bg_execution->_arr[i];
-            bool has_child = bg_execution->clear_child(bg_execution, child_pid);
+            bool has_child = bg_execution_clear_child(bg_execution, child_pid);
             if (has_child) {
                 printf("[%d] %d\n", i + 1, child_pid);
                 if ((bg_execution->child_pids != NULL && bg_execution->child_pids->length == 0) || bg_execution->child_amount == 0) {
-                    vec_bg_execution->take(vec_bg_execution, i);
-                    bg_execution->drop(bg_execution);
+                    vec_take(vec_bg_execution, i);
+                    bg_execution_drop(bg_execution);
                     printf("[%d] + Done\n", i + 1);
                 }
                 return true;
@@ -110,11 +106,11 @@ void clear_bg_execution(pid_t pgid) {
         BgExecution *bg_execution = vec_bg_execution->_arr[i];
         if (bg_execution != NULL) {
             if (is_debug()) {
-                bg_execution->print(bg_execution);
+                bg_execution_print(bg_execution);
             }
             pid_t bg_pgid = bg_execution->pgid;
             if (bg_execution->child_pids == NULL) {
-                vec_bg_execution->take(vec_bg_execution, i);
+                vec_take(vec_bg_execution, i);
                 i -= 1;
                 bg_execution_drop(bg_execution);
             }
@@ -133,7 +129,7 @@ void end_bg_execution() {
     if (vec_bg_execution->length) {
         clear_bg_execution(0);
     }
-    vec_bg_execution->drop(vec_bg_execution);
+    vec_drop(vec_bg_execution);
 }
 
 // function to handle SIG_CHLD
@@ -222,7 +218,7 @@ pid_t cmd_handler(ShellState *state, ExecArgs *exec_args, bool *should_continue,
     bool should_fork = opts % 2 == 1;
     bool is_background = ((opts >> 1) % 2) == 1;
     bool is_session_leader = ((opts >> 2) % 2) == 1;
-    CallResult *res = exec_args->call(exec_args, should_fork, !is_background, is_background && is_session_leader);
+    CallResult *res = exec_args_call(exec_args, should_fork, !is_background, is_background && is_session_leader);
     switch (res->shell_behavior) {
         case Continue:
             break;
@@ -244,7 +240,7 @@ pid_t cmd_handler(ShellState *state, ExecArgs *exec_args, bool *should_continue,
             break;
     }
     pid_t child_pid = res->child_pid;
-    res->drop(res);
+    call_result_drop(res);
     return child_pid;
 }
 
@@ -260,8 +256,8 @@ pid_t basic_cmd_handler(ShellState *state, CallGroup *call_group,
         if (call_group->is_background) {
             setpgid(child_pid, child_pid);
             Vec *vec_child_pids = new_vec_with_capacity(sizeof(pid_t), 1);
-            vec_child_pids->push(vec_child_pids, child_pid);
-            vec_bg_execution->push(vec_bg_execution, new_bg_execution(child_pid, vec_child_pids));
+            vec_push(vec_child_pids, child_pid);
+            vec_push(vec_bg_execution, new_bg_execution(child_pid, vec_child_pids));
         }
     }
 }
@@ -281,8 +277,8 @@ void sequential_cmd_handler(ShellState *state, CallGroup *call_group,
             exit(ForkFailed);
         } else if (child_pid > 0) {
             Vec *vec_child_pids = new_vec_with_capacity(sizeof(pid_t), call_group->exec_amount);
-            vec_child_pids->push(vec_child_pids, child_pid);
-            vec_bg_execution->push(vec_bg_execution, new_bg_execution(child_pid, vec_child_pids));
+            vec_push(vec_child_pids, child_pid);
+            vec_push(vec_bg_execution, new_bg_execution(child_pid, vec_child_pids));
             return;
         } else {
             for (i = 0; i < call_group->exec_amount; i++) {
@@ -298,7 +294,7 @@ void sequential_cmd_handler(ShellState *state, CallGroup *call_group,
 #define READ_PIPE 0
 /**
  *  Since the project specifies that we should create another session to execute 
- * the piped command that and it should be executed in a background and I've initially coded
+ * the piped command and it should be executed in a background and I've initially coded
  * the default behavior of shell's piped command over the 'piped_cmd_handler' while
  * over here I've added it's specific behavior and over the main I've used a environment variable
  * to handle it's selection
@@ -365,7 +361,7 @@ void project_piped_cmd_handler(ShellState *state, CallGroup *call_group,
     } else {
         BgExecution *bg_exec = new_bg_execution(child_pgid, NULL);
         bg_exec->child_amount = exec_amount;
-        vec_bg_execution->push(vec_bg_execution, bg_exec);
+        vec_push(vec_bg_execution, bg_exec);
     }
 }
 
@@ -395,7 +391,7 @@ void dflt_piped_cmd_handler(ShellState *state, CallGroup *call_group,
             child_pgid = child_pid ? child_pid : getpid();
         }
         if (child_pid) {
-            vec_child_pids->push(vec_child_pids, (void *) child_pid);
+            vec_push(vec_child_pids, (void *) child_pid);
             setpgid(child_pid, child_pgid);
         } else {
             if (i < exec_amount - 1) {
@@ -428,9 +424,9 @@ void dflt_piped_cmd_handler(ShellState *state, CallGroup *call_group,
         if (!call_group->is_background) {
             while (waitpid(-child_pgid, NULL, WUNTRACED) != -1)
                 ;
-            vec_child_pids->drop(vec_child_pids);
+            vec_drop(vec_child_pids);
         } else {
-            vec_bg_execution->push(vec_bg_execution, new_bg_execution(child_pgid, vec_child_pids));
+            vec_push(vec_bg_execution, new_bg_execution(child_pgid, vec_child_pids));
         }
     }
 }
