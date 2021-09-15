@@ -157,8 +157,6 @@ void *input_thread_func(void *arg) {
 pthread_t input_thread;
 bool has_input_thread;
 
-// function to create a thread to handle input
-// it will cancel the thread if it exists
 void create_input_thread(ShellState *state) {
     if (has_input_thread) {
         pthread_cancel(input_thread);
@@ -200,7 +198,7 @@ void sig_int_handler(const int signal) {
 void sig_usr_handler(const int signal) {
     // sig_int_handler(SIGINT);
     clear_bg_execution(0);
-    print_weird();
+    print_i_feel_weird();
     cancel_thread();
 }
 
@@ -292,15 +290,16 @@ void sequential_cmd_handler(ShellState *state, CallGroup *call_group,
 
 #define WRITE_PIPE 1
 #define READ_PIPE 0
-/**
- *  Since the project specifies that we should create another session to execute 
- * the piped command and it should be executed in a background and I've initially coded
- * the default behavior of shell's piped command over the 'piped_cmd_handler' while
- * over here I've added it's specific behavior and over the main I've used a environment variable
- * to handle it's selection
- */
+
 void project_piped_cmd_handler(ShellState *state, CallGroup *call_group,
                                bool *should_continue, int *status_code) {
+    /**
+     *  Since the project specifies that we should create another session to execute 
+     * the piped command and it should be executed in a background and I've initially coded
+     * the default behavior of shell's piped command over the 'piped_cmd_handler' while
+     * over here I've added it's specific behavior and over the main I've used a environment variable
+     * to handle it's selection
+     */
     unsigned int exec_amount = call_group->exec_amount;
     pid_t child_pgid = fork();
     if (child_pgid == -1) {
@@ -365,9 +364,10 @@ void project_piped_cmd_handler(ShellState *state, CallGroup *call_group,
     }
 }
 
-// Function to handle piped command execution
 void dflt_piped_cmd_handler(ShellState *state, CallGroup *call_group,
                             bool *should_continue, int *status_code) {
+    // this was my initial implementation about a implementation of the default behavior
+    // from shells when executing a command
     unsigned int exec_amount = call_group->exec_amount;
     int i;
     pid_t child_pgid = 0;
@@ -463,4 +463,4 @@ const char *WEIRD = "\n                                        .--.  .--.\n"
                     "                             `.          _.-'`-.\n"
                     "                               `''---''``        `.";
 
-void print_weird() { printf("%s\n", WEIRD); }
+void print_i_feel_weird() { printf("%s\n", WEIRD); }

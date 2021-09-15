@@ -7,12 +7,15 @@
 #include <string.h>
 #include <sys/wait.h>
 
-// Maximum value for a PATH name considering the null termination character.
+/**
+ * @brief Maximum length for a PATH name considering the null termination character.
+ */
 #define PATH_MAX 4096
-// Macro to retrieve the human readable value of a "bool"
+/**
+ * @brief Macro to retrieve the human readable value of a "bool"
+ */
 #define bool_str(val) val ? "true" : "false"
 
-// function to format a string into this same string enclosed by reticence
 char *fmt_string(void *data) {
     char *str = (char *) data;
     uint64 fmt_len = strlen(str) + 3;
@@ -21,7 +24,6 @@ char *fmt_string(void *data) {
     return fmt;
 }
 
-// function to allocate a vector of strings
 Vec *new_vec_string() { return new_vec(sizeof(char *)); }
 
 bool DEBUG_IS_ON = false;
@@ -30,7 +32,6 @@ bool is_debug() {
     return DEBUG_IS_ON;
 }
 
-// function to debug or not this lib
 void debug_lib(bool should_debug) {
     if (should_debug) {
         DEBUG_IS_ON = true;
@@ -48,7 +49,6 @@ ShellState *new_shell_state() {
     return self;
 }
 
-// function to retrieve the actual working directory of the shell
 char *shell_state_cwd() {
     char cwd[PATH_MAX];
     if (getcwd(cwd, sizeof(cwd)) != NULL) {
@@ -59,7 +59,6 @@ char *shell_state_cwd() {
     }
 }
 
-// function to retrieve home directory of the actual user
 char *shell_state_home() {
     const char *home;
     if ((home = getenv("HOME")) == NULL) {
@@ -68,7 +67,6 @@ char *shell_state_home() {
     return home != NULL ? strdup(home) : NULL;
 }
 
-// function to change the actual working directory
 void shell_state_change_cwd(char *new_dir) {
     DIR *dir = opendir(new_dir);
     char real_dir_path[PATH_MAX];
@@ -80,10 +78,11 @@ void shell_state_change_cwd(char *new_dir) {
     closedir(dir);
 }
 
-// function to simplify the presentation of the working directory
-// hiding the home directory under the '~' and any directory that
-// would be 2 directories above using the '...'
+
 char *shell_state_simple_cwd() {
+    // function to simplify the presentation of the working directory
+    // hiding the home directory under the '~' and any directory that
+    // would be 2 directories above using the '...'
     char *cwd = shell_state_cwd();
     char *home = shell_state_home();
     // verify if the working directory is the same as the home directory
@@ -136,8 +135,6 @@ const char EndAnsi[] = "\033[0m";
 const char RedAnsi[] = "\033[91m";
 const char YellowAnsi[] = "\033[93m";
 
-// function used to prompt the user into our shell, returning the string provided by the user
-// that should have a max length of MAX_SHELL_INPUT value
 char *shell_state_prompt_user(ShellState *state) {
     if (state != NULL) {
         char input[MAX_SHELL_INPUT];
@@ -181,7 +178,6 @@ ExecArgs *new_exec_args(unsigned int argc, char **argv) {
     return self;
 }
 
-// Function that creates a ExecArgs* object from an array of strings
 ExecArgs *new_exec_args_from_vec_str(Vec *vec) {
     int argc = vec->length;
     char **argv = malloc(sizeof(char *) * (argc + 1));
@@ -227,10 +223,6 @@ void exec_args_print(ExecArgs *self) {
     free(str);
 }
 
-// function to abstract the execution of the command that is stored into the ExecArgs* struct
-// it allow us to specify if we should fork the actual process into a new one or if we should
-// wait for the end of it's execution, it also return the result of it's execution
-// this has the objective of only handling external execution call and identification of internal ones.
 CallResult *exec_args_call(ExecArgs *exec_args, bool should_fork, bool should_wait, bool is_session_leader) {
     enum ShellBehavior shell_behavior = UnknownCommand;
     char *program_name = NULL;
@@ -243,7 +235,7 @@ CallResult *exec_args_call(ExecArgs *exec_args, bool should_fork, bool should_wa
     } else {
         program_name = exec_args->argv[0];
         // Over here since I've tried to mimic the basic behavior of a shell I've kept
-        // exit as one of the command's used to exit it's execution but as the project require's
+        // exit as one of the command's used to finish it's execution but as the project require's
         // that we use the "armageddon" as an internal operation as well I've also used it
         if (str_equals(program_name, "exit")) {
             shell_behavior = Exit;

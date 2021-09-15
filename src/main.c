@@ -5,7 +5,11 @@
 #include "lib/handlers.h"
 #include "lib/lib.h"
 
-
+/**
+ * @brief our main
+ * 
+ * @return int 
+ */
 int main(void) {
     setsid();
     start_bg_execution();
