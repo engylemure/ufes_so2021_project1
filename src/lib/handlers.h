@@ -9,8 +9,17 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <string.h>
-
+#include <unistd.h>
 #include "lib.h"
+
+#define SHELL_TYPE_ENV_KEY "SHELL_TYPE"
+/**
+ *  CMD to print the current stored bg execution information, since we
+ * use the setsid() cmd to change the piped commands session and group
+ * by the project specification this can more easily allow us to identify
+ * them
+ */
+#define DBG_BG_EXECUTION_CMD "bolsonaro_genocida"
 
 /**
  * @brief function to start the background execution mapping
@@ -103,9 +112,11 @@ void sig_int_handler(int signal);
 /**
  * @brief handler for the SIGCHLD signal, it has the objective
  * of acknowledging and handling the background execution mapping cleanup.
- * @param signal 
+ * @param signal
+ * @param info
+ * @param ucontext
  */
-void sig_chld_handler(int signal);
+void sig_child_handler(const int signal, siginfo_t *info, void* ucontext) ;
 
 /**
  * @brief handler for the SIGUSR1 or SIGUSR2 signal, it has the objective of
@@ -172,5 +183,10 @@ void sequential_cmd_handler(ShellState *state, CallGroup *call_group,
  */
 void piped_cmd_handler(ShellState *state, CallGroup *call_group,
                        bool *should_continue, int *status_code);
+
+/**
+ * @brief function to describe the stored information related to background processes in execution
+ */
+ void debug_bg_execution();
 
 #endif

@@ -225,7 +225,6 @@ typedef struct callGroup {
     unsigned int exec_amount;
     enum CallType type;
     bool is_background;
-    char *file_name;
     ExecArgs **exec_arr;
 } CallGroup;
 

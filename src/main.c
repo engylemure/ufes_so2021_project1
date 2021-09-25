@@ -1,4 +1,3 @@
-#include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
 
@@ -14,14 +13,9 @@ int main(void) {
     setsid();
     start_bg_execution();
     char *debug_env = getenv("DEBUG");
-    debug_lib(debug_env != NULL &&
-              (str_equals(debug_env, "true") || str_equals(debug_env, "1")));
-    signal(SIGINT, sig_int_handler);
-    signal(SIGQUIT, sig_int_handler);
-    signal(SIGCHLD, sig_chld_handler);
-    signal(SIGUSR1, sig_usr_handler);
-    signal(SIGUSR2, sig_usr_handler);
-
+    bool debug_mode = debug_env != NULL &&
+    (str_equals(debug_env, "true") || str_equals(debug_env, "1"));
+    debug_lib(debug_mode);
     ShellState *state = new_shell_state();
 
     bool should_continue = true;
@@ -30,6 +24,10 @@ int main(void) {
         create_input_thread(state);
         char *shell_input = join_input_thread();
         if (shell_input != NULL) {
+            if (debug_mode && str_equals(shell_input, DBG_BG_EXECUTION_CMD)) {
+                debug_bg_execution();
+                continue;
+            }
             CallGroups *call_groups = call_groups_from_input(shell_input);
             int i;
             for (i = 0; i < call_groups->len; i++) {

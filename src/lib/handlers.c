@@ -1,7 +1,6 @@
 #include "handlers.h"
 
 
-const char *SHELL_TYPE_ENV_KEY = "SHELL_TYPE";
 bool HAS_DFLT_SHELL_BEHAVIOR = false;
 Vec *vec_bg_execution;
 
@@ -14,10 +13,20 @@ BgExecution *new_bg_execution(pid_t pgid, Vec *child_pids) {
     return val;
 }
 
+char *pid_t_fmt(void *data) {
+    pid_t pid = (pid_t) (uintptr_t) (data);
+    char *str = malloc(sizeof(char) * 11);
+    sprintf(str, "%d", pid);
+    return str;
+}
+
 char *bg_execution_fmt(BgExecution *self) {
-    char *str = malloc(sizeof(char) * 100);
-    int child_pids_len = self->child_pids != NULL ? self->child_pids->length : 0;
-    sprintf(str, "BgExecution { pgid: %d, child_pids_len: %ld, child_amount: %d }", self->pgid, child_pids_len, self->child_amount);
+    char *child_pids = self->child_pids != NULL ? vec_fmt(self->child_pids, pid_t_fmt) : NULL;
+    unsigned long int child_pids_len = self->child_pids != NULL ? strlen(child_pids) : 5;
+    char *str = malloc(sizeof(char) * (100 + child_pids_len));
+    sprintf(str, "BgExecution { pgid: %d, child_pids: %s, child_amount: %d }", self->pgid, child_pids,
+            self->child_amount);
+    free(child_pids);
     return str;
 }
 
@@ -26,6 +35,11 @@ void bg_execution_print(BgExecution *self) {
     printf("%s\n", str);
     free(str);
 }
+
+void debug_bg_execution() {
+    vec_print(vec_bg_execution, (char *(*)(void *)) bg_execution_fmt);
+}
+
 
 void bg_execution_drop(BgExecution *self) {
     if (self->child_pids != NULL) {
@@ -69,26 +83,43 @@ void start_bg_execution() {
     if (shell_type != NULL && str_equals(shell_type, "DEFAULT")) {
         HAS_DFLT_SHELL_BEHAVIOR = true;
     }
+    struct sigaction action_int;
+    action_int.sa_handler = sig_int_handler;
+    action_int.sa_flags = 0;
+    sigaction(SIGINT, &action_int, NULL);
+    sigaction(SIGQUIT, &action_int, NULL);
+    sigaction(SIGSTOP, &action_int, NULL);
+    sigaction(SIGTSTP, &action_int, NULL);
+    struct sigaction action_chld;
+    action_chld.sa_sigaction = sig_child_handler;
+    action_chld.sa_flags = SA_SIGINFO;
+    sigaction(SIGCHLD, &action_chld, NULL);
+    struct sigaction action_usr;
+    sigemptyset(&action_usr.sa_mask);
+    sigaddset(&action_usr.sa_mask, SIGINT);
+    sigaddset(&action_usr.sa_mask, SIGQUIT);
+    sigaddset(&action_usr.sa_mask, SIGTSTP);
+    action_usr.sa_handler = sig_usr_handler;
+    action_usr.sa_flags = 0;
+    sigaction(SIGUSR1, &action_usr, NULL);
+    sigaction(SIGUSR2, &action_usr, NULL);
 }
 
 // try to clear a child_pid from the references of stored into the
 // background execution vector also cleaning up if the background execution
 // is complete
 bool clear_child_execution(pid_t child_pid) {
-    if (is_debug()) {
-        vec_print(vec_bg_execution, bg_execution_fmt);
-    }
     if (vec_bg_execution->length) {
         int i;
         for (i = 0; i < vec_bg_execution->length; i++) {
             BgExecution *bg_execution = vec_bg_execution->_arr[i];
             bool has_child = bg_execution_clear_child(bg_execution, child_pid);
             if (has_child) {
-                printf("[%d] %d\n", i + 1, child_pid);
-                if ((bg_execution->child_pids != NULL && bg_execution->child_pids->length == 0) || bg_execution->child_amount == 0) {
+                if ((bg_execution->child_pids != NULL && bg_execution->child_pids->length == 0) ||
+                    bg_execution->child_amount == 0) {
                     vec_take(vec_bg_execution, i);
                     bg_execution_drop(bg_execution);
-                    printf("[%d] + Done\n", i + 1);
+                    printf("[%d] Done\n", child_pid);
                 }
                 return true;
             }
@@ -98,16 +129,13 @@ bool clear_child_execution(pid_t child_pid) {
 }
 
 // function to clear a background execution using a pgid
-// if the provided pgid is 0 then we cleanup all background execution
+// if the provided pgid is 0 then we clean up all background execution
 // signaling all process groups that could be active
 void clear_bg_execution(pid_t pgid) {
     int i;
     for (i = 0; i < vec_bg_execution->length; i++) {
         BgExecution *bg_execution = vec_bg_execution->_arr[i];
         if (bg_execution != NULL) {
-            if (is_debug()) {
-                bg_execution_print(bg_execution);
-            }
             pid_t bg_pgid = bg_execution->pgid;
             if (bg_execution->child_pids == NULL) {
                 vec_take(vec_bg_execution, i);
@@ -132,21 +160,6 @@ void end_bg_execution() {
     vec_drop(vec_bg_execution);
 }
 
-// function to handle SIG_CHLD
-// it basicallly try to acknowledge the end of a chld process and cleanup it's
-// information
-void sig_chld_handler(const int signal) {
-    int i;
-    for (i = 0; i < vec_bg_execution->length; i++) {
-        BgExecution *bg_exec = vec_bg_execution->_arr[i];
-        pid_t pgid = bg_exec->pgid;
-        pid_t child_that_finished = waitpid(-pgid, NULL, WNOHANG);
-        if (child_that_finished != -1 && clear_child_execution(child_that_finished)) {
-            break;
-        }
-    }
-}
-
 // function to handle with user input
 // that should be used as an thread procedure
 void *input_thread_func(void *arg) {
@@ -164,6 +177,7 @@ void create_input_thread(ShellState *state) {
     pthread_create(&input_thread, NULL, input_thread_func, (void *) state);
     has_input_thread = true;
 }
+
 // function to join the input thread and receive
 // the input
 char *join_input_thread() {
@@ -176,6 +190,7 @@ char *join_input_thread() {
     has_input_thread = false;
     return input;
 }
+
 // function to more easily deal with canceling and cleaning
 // up of the input thread
 void cancel_thread() {
@@ -189,17 +204,27 @@ void cancel_thread() {
 // handler for the SIG_INT
 // that will restart the input to the user
 void sig_int_handler(const int signal) {
-    // if (child_pgid) {
-    //     killpg(child_pgid, signal);
-    // }
     cancel_thread();
 }
 
 void sig_usr_handler(const int signal) {
-    // sig_int_handler(SIGINT);
     clear_bg_execution(0);
     print_i_feel_weird();
     cancel_thread();
+}
+
+
+// function to handle SIG_CHLD
+// has the objective of acknowledge the end of a child process and cleanup it's
+// information if it's being stored into the vec_bg_execution.
+void sig_child_handler(const int signal, siginfo_t *info, void *ucontext) {
+    if (info->si_signo == SIGCHLD) {
+        pid_t child_that_finished = info->si_pid;
+        // Try to clean up the stored information related to the background
+        // commands.
+        clear_child_execution(child_that_finished);
+        waitpid(child_that_finished, NULL, WNOHANG);
+    }
 }
 
 void unknown_cmd_info(CallResult *res, bool *should_continue,
@@ -254,10 +279,12 @@ pid_t basic_cmd_handler(ShellState *state, CallGroup *call_group,
         if (call_group->is_background) {
             setpgid(child_pid, child_pid);
             Vec *vec_child_pids = new_vec_with_capacity(sizeof(pid_t), 1);
-            vec_push(vec_child_pids, child_pid);
+            vec_push(vec_child_pids, (void *) (uintptr_t) child_pid);
             vec_push(vec_bg_execution, new_bg_execution(child_pid, vec_child_pids));
         }
+        return child_pid;
     }
+    return 0;
 }
 
 void sequential_cmd_handler(ShellState *state, CallGroup *call_group,
@@ -275,7 +302,7 @@ void sequential_cmd_handler(ShellState *state, CallGroup *call_group,
             exit(ForkFailed);
         } else if (child_pid > 0) {
             Vec *vec_child_pids = new_vec_with_capacity(sizeof(pid_t), call_group->exec_amount);
-            vec_push(vec_child_pids, child_pid);
+            vec_push(vec_child_pids, (void *) (uintptr_t) child_pid);
             vec_push(vec_bg_execution, new_bg_execution(child_pid, vec_child_pids));
             return;
         } else {
@@ -366,7 +393,7 @@ void project_piped_cmd_handler(ShellState *state, CallGroup *call_group,
 
 void dflt_piped_cmd_handler(ShellState *state, CallGroup *call_group,
                             bool *should_continue, int *status_code) {
-    // this was my initial implementation about a implementation of the default behavior
+    // this was my initial implementation about an implementation of the default behavior
     // from shells when executing a command
     unsigned int exec_amount = call_group->exec_amount;
     int i;
@@ -391,7 +418,7 @@ void dflt_piped_cmd_handler(ShellState *state, CallGroup *call_group,
             child_pgid = child_pid ? child_pid : getpid();
         }
         if (child_pid) {
-            vec_push(vec_child_pids, (void *) child_pid);
+            vec_push(vec_child_pids, (void *) (uintptr_t) child_pid);
             setpgid(child_pid, child_pgid);
         } else {
             if (i < exec_amount - 1) {
@@ -422,8 +449,7 @@ void dflt_piped_cmd_handler(ShellState *state, CallGroup *call_group,
             close(pipes[j][READ_PIPE]);
         }
         if (!call_group->is_background) {
-            while (waitpid(-child_pgid, NULL, WUNTRACED) != -1)
-                ;
+            while (waitpid(-child_pgid, NULL, WUNTRACED) != -1);
             vec_drop(vec_child_pids);
         } else {
             vec_push(vec_bg_execution, new_bg_execution(child_pgid, vec_child_pids));

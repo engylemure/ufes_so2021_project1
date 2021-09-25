@@ -209,7 +209,7 @@ void exec_args_drop(ExecArgs *self) {
 }
 
 char *exec_args_fmt(ExecArgs *data) {
-    char *argv_str = array_fmt(data->argc, data->argv, fmt_string);
+    char *argv_str = array_fmt(data->argc, (void **) data->argv, fmt_string);
     unsigned int str_len = strlen(argv_str);
     char *str = malloc(sizeof(char) * (str_len + 40));
     sprintf(str, "ExecArgs { argc: %d, argv: %s }", data->argc, argv_str);
@@ -323,14 +323,13 @@ CallGroup *new_call_group(Vec *vec_exec_args, enum CallType type, bool is_backgr
     self->type = type;
     self->exec_amount = count;
     self->exec_arr = exec_arr;
-    self->file_name = NULL;
     self->is_background = is_background;
     return self;
 }
 
 char *call_group_fmt(CallGroup *self) {
     int i;
-    char *exec_args_str = array_fmt(self->exec_amount, self->exec_arr, exec_args_fmt);
+    char *exec_args_str = array_fmt(self->exec_amount, (void **) self->exec_arr, (char *(*)(void *)) exec_args_fmt);
     char *call_group_type;
     switch (self->type) {
         case Basic:
@@ -344,7 +343,7 @@ char *call_group_fmt(CallGroup *self) {
             break;
     }
     char *str = malloc(sizeof(char) * (strlen(exec_args_str) + 100));
-    sprintf(str, "CallGroup { exec_amount: %d, type: %s, is_background: %s, file_name: %s, exec_arr: %s }", self->exec_amount, call_group_type, bool_str(self->is_background), self->file_name, exec_args_str);
+    sprintf(str, "CallGroup { exec_amount: %d, type: %s, is_background: %s, exec_arr: %s }", self->exec_amount, call_group_type, bool_str(self->is_background), exec_args_str);
     free(exec_args_str);
     return str;
 }
@@ -362,10 +361,6 @@ void call_group_drop(CallGroup *self) {
     }
     free(self->exec_arr);
     self->exec_arr = NULL;
-    if (self->file_name != NULL) {
-        free(self->file_name);
-        self->file_name = NULL;
-    }
     free(self);
 }
 
@@ -458,7 +453,7 @@ CallGroups *call_groups_from_input(char *input) {
         vec_push(vec_call_group,
                              new_call_group(vec_exec_args, type, is_background));
         if (DEBUG_IS_ON)
-           vec_print(vec_call_group, call_group_fmt);
+           vec_print(vec_call_group, (char *(*)(void *)) call_group_fmt);
         CallGroups *val = new_call_groups(vec_call_group, false);
         vec_drop(vec_call_group);
         return val;
@@ -483,7 +478,7 @@ void call_groups_drop(CallGroups *self) {
 
 char *call_groups_fmt(CallGroups *self) {
     unsigned int str_len = 58;
-    char *c_group_str = array_fmt(self->len, self->groups, call_group_fmt);
+    char *c_group_str = array_fmt(self->len, (void **) self->groups, (char *(*)(void *)) call_group_fmt);
     char *str = malloc(sizeof(char) * (strlen(c_group_str) + str_len));
     sprintf(str, "CallGroups { len: %d, has_parsing_error: %s, groups: %s }", self->len, bool_str(self->has_parsing_error), c_group_str);
     free(c_group_str);
@@ -598,7 +593,7 @@ Vec *vec_parse_arg_res_from_shell_input(char *shell_input) {
         vec_drop(char_buffer);
     }
     if (DEBUG_IS_ON)
-        vec_print(args, parse_arg_res_fmt);
+        vec_print(args, (char *(*)(void *)) parse_arg_res_fmt);
     if (has_error) {
         vec_drop(args);
         return NULL;
